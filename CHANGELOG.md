@@ -39,12 +39,21 @@
 - [x] Verified: build passes, home + admin render, cron auth returns 401/500 as expected
 - [x] README + architecture docs
 
-### Remaining to go live (user actions)
-- [ ] Create Supabase project + run `schema.sql` / `seed_sources.sql`
-- [ ] Create the admin user in Supabase Auth
-- [ ] Provision Gemini API key
-- [ ] Fill real `.env.local`, trigger first ingest+grade, tune the grading prompt on real output
-- [ ] Deploy to Vercel + set GitHub Actions secrets (`SITE_URL`, `CRON_SECRET`)
+### Live in production ✅ (2026-07-11)
+- [x] Supabase project provisioned; `schema.sql` + seeds run via containerized `pg` migration
+- [x] Gemini working on `gemini-flash-latest` (pinned `2.0-flash` had 0 free-tier quota)
+- [x] First ingest + grade run against live data
+- [x] Deployed to Vercel — **https://firefly-ochre-gamma.vercel.app**
+- [x] Auto-deploy on push to `main` via GitHub Actions + Vercel CLI (no GitHub↔Vercel link needed)
+- [x] Cron (GitHub Actions, every 30 min) ingesting + grading against production
+- [ ] Create the admin user in Supabase Auth (only remaining item — enables `/admin`)
+
+### Post-launch fixes & additions (2026-07-11)
+- [x] China sources added: SCMP Tech, TechNode, Pandaily (EN) + QbitAI 量子位, Leiphone 雷锋网, 36Kr 36氪 (中文, English AI summaries)
+- [x] 30-day recency cutoff on ingest (tames full-archive feeds)
+- [x] `unique(feed_url)` constraint for idempotent source seeds
+- [x] Grading capped to one batch/call + cron loops it (Vercel Hobby 60s function limit)
+- [x] Dead/stale feeds deactivated: Anthropic, Meta AI, Qwen, Synced (no public RSS / stale)
 
 ---
 
