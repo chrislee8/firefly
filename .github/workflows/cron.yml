@@ -1,0 +1,27 @@
+name: Firefly cron (ingest + grade)
+
+# Free scheduled trigger — bypasses Vercel Hobby's daily-only cron limit.
+on:
+  schedule:
+    - cron: '*/30 * * * *' # every 30 minutes (UTC)
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+concurrency:
+  group: firefly-cron
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ingest feeds
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/ingest"
+
+      - name: Grade pending articles
+        run: |
+          curl --fail --silent --show-error --max-time 120 \
+            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.SITE_URL }}/api/cron/grade"

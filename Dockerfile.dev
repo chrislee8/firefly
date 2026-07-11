@@ -1,0 +1,33 @@
+# Firefly dev container — everything runs in here, nothing on the host.
+FROM node:23-bookworm-slim
+
+# System CLIs used during dev + DB work.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      postgresql-client \
+      git \
+      curl \
+      ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Vercel CLI (deploy) available inside the container.
+RUN npm install -g vercel@latest
+
+# Supabase CLI (db push / types), matched to the build arch. Best-effort so a
+# network hiccup never blocks the dev image from building.
+ARG TARGETARCH
+RUN set -eux; \
+    arch="${TARGETARCH:-amd64}"; \
+    if curl -fsSL "https://github.com/supabase/cli/releases/latest/download/supabase_linux_${arch}.tar.gz" -o /tmp/sb.tar.gz; then \
+      tar -xzf /tmp/sb.tar.gz -C /usr/local/bin supabase && rm -f /tmp/sb.tar.gz && supabase --version; \
+    else \
+      echo "supabase CLI download skipped"; \
+    fi
+
+WORKDIR /app
+
+ENV NEXT_TELEMETRY_DISABLED=1
+
+EXPOSE 3040
+
+# Deps live in a named volume (populated on first run); source is bind-mounted.
+CMD ["sh", "-c", "npm install && npm run dev -- --hostname 0.0.0.0 --port 3040"]

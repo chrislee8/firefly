@@ -1,0 +1,25 @@
+services:
+  firefly:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    image: firefly-dev
+    container_name: firefly-dev
+    ports:
+      - "3040:3040"
+    env_file:
+      - .env.local
+    environment:
+      # File-watching over macOS bind mounts needs polling for reliable HMR.
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+      - NEXT_TELEMETRY_DISABLED=1
+    volumes:
+      - ./:/app
+      # Container-owned deps + build cache — keeps host's darwin binaries out.
+      - firefly_node_modules:/app/node_modules
+      - firefly_next:/app/.next
+
+volumes:
+  firefly_node_modules:
+  firefly_next:
