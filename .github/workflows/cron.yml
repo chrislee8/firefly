@@ -20,8 +20,13 @@ jobs:
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.SITE_URL }}/api/cron/ingest"
 
-      - name: Grade pending articles
+      - name: Grade pending articles (several batches)
         run: |
-          curl --fail --silent --show-error --max-time 120 \
-            -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
-            "${{ secrets.SITE_URL }}/api/cron/grade"
+          # Each call grades one batch (~30s, under Vercel's 60s cap).
+          # Loop to drain more per cron cycle — the runner has no such limit.
+          for i in 1 2 3 4 5; do
+            echo "grade pass $i";
+            curl --fail --silent --show-error --max-time 90 \
+              -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
+              "${{ secrets.SITE_URL }}/api/cron/grade" || exit 1;
+          done

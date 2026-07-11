@@ -153,7 +153,9 @@ export async function runGrading(): Promise<GradeResult> {
     .select('id, title, source_excerpt, published_at, sources!inner(name, tier)')
     .eq('status', 'pending')
     .order('published_at', { ascending: false })
-    .limit(BATCH_SIZE * 5); // cap work per cron run
+    // One batch per invocation: a batch is ~30s and Vercel's Hobby functions
+    // hard-cap at 60s. The cron calls this endpoint repeatedly to drain more.
+    .limit(BATCH_SIZE);
 
   if (error) throw new Error(`Failed to load pending articles: ${error.message}`);
 
