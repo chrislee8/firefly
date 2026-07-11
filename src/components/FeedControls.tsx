@@ -7,15 +7,18 @@ import type { SortMode } from '@/lib/feed';
 export function FeedControls({
   sort,
   activeCategory,
+  base = '/list',
 }: {
   sort: SortMode;
   activeCategory?: string;
+  base?: string;
 }) {
   const tab = (mode: SortMode, label: string) => {
     const active = sort === mode;
+    const href = mode === 'top' ? base : `${base}?sort=latest`;
     return (
       <Link
-        href={mode === 'top' ? '/' : '/?sort=latest'}
+        href={href}
         className="rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
         style={{
           background: active ? 'var(--surface-2)' : 'transparent',
@@ -40,7 +43,7 @@ export function FeedControls({
           return (
             <Link
               key={cat}
-              href={active ? '/' : `/category/${slugify(cat)}`}
+              href={active ? base : `/category/${slugify(cat)}`}
               className="rounded-full border px-3 py-1 text-xs transition-colors"
               style={{
                 borderColor: active ? 'var(--glow-dim)' : 'var(--border)',
