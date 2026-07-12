@@ -42,7 +42,7 @@ a { color: inherit; }
   text-shadow: 0 0 18px rgba(255, 200, 87, 0.45);
 }
 
-/* Swarm overlay animations */
+/* Night-sky overlay animations */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.15; }

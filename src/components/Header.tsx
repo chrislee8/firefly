@@ -7,7 +7,7 @@ export function Header() {
       style={{ background: 'rgba(10,11,15,0.8)', borderColor: 'var(--border)' }}
     >
       <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-        <Link href="/" className="flex items-center gap-2" title="Back to the swarm">
+        <Link href="/" className="flex items-center gap-2" title="Back to the night sky">
           <span className="text-xl leading-none glow-text" aria-hidden>
             ✦
           </span>
@@ -19,8 +19,8 @@ export function Header() {
           </span>
         </Link>
         <nav className="flex items-center gap-4 text-sm" style={{ color: 'var(--muted)' }}>
-          <Link href="/" className="hover:text-foreground" title="Animated swarm view">
-            ✦ Swarm
+          <Link href="/" className="hover:text-foreground" title="Animated night-sky view">
+            ✦ Night Sky
           </Link>
           <Link href="/list" className="hover:text-foreground">
             List

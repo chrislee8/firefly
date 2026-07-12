@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
-import type { FireflyItem } from '@/lib/swarm';
+import type { FireflyItem } from '@/lib/nightsky';
 
 type Motion = 'slow' | 'normal' | 'more';
 
@@ -26,7 +26,7 @@ function timeLabel(minutesAgo: number): string {
   return minutesAgo < 60 ? `${minutesAgo}m ago` : `${Math.round(minutesAgo / 60)}h ago`;
 }
 
-export function Swarm({ items }: { items: FireflyItem[] }) {
+export function NightSky({ items }: { items: FireflyItem[] }) {
   const router = useRouter();
   const mountRef = useRef<HTMLDivElement>(null);
   const cmdRef = useRef<HTMLInputElement>(null);
@@ -396,7 +396,7 @@ export function Swarm({ items }: { items: FireflyItem[] }) {
       {items.length === 0 && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
           <div style={{ color: '#ffd23f', fontSize: 30, textShadow: '0 0 18px rgba(255,210,63,0.5)' }}>✦</div>
-          <div style={{ color: 'rgba(242,240,230,0.6)', fontFamily: mono, fontSize: 12, letterSpacing: '0.1em' }}>THE SWARM IS WARMING UP…</div>
+          <div style={{ color: 'rgba(242,240,230,0.6)', fontFamily: mono, fontSize: 12, letterSpacing: '0.1em' }}>THE NIGHT SKY IS WARMING UP…</div>
         </div>
       )}
     </div>

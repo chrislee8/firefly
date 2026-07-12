@@ -1,14 +1,14 @@
-import { getSwarmItems, type FireflyItem } from '@/lib/swarm';
-import { Swarm } from '@/components/swarm/Swarm';
+import { getNightSkyItems, type FireflyItem } from '@/lib/nightsky';
+import { NightSky } from '@/components/nightsky/NightSky';
 
 export const dynamic = 'force-dynamic';
 
 export default async function HomePage() {
   let items: FireflyItem[] = [];
   try {
-    items = await getSwarmItems();
+    items = await getNightSkyItems();
   } catch {
     items = [];
   }
-  return <Swarm items={items} />;
+  return <NightSky items={items} />;
 }

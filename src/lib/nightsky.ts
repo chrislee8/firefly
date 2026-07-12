@@ -14,16 +14,16 @@ export interface FireflyItem {
   score: number;
 }
 
-const SWARM_LIMIT = 160; // design calls for 100–200 fireflies
+const SKY_LIMIT = 160; // design calls for 100–200 fireflies
 
 /** Raw query — throws on DB failure (handled by the resilient wrapper below). */
-async function fetchSwarmItems(): Promise<FireflyItem[]> {
+async function fetchSkyItems(): Promise<FireflyItem[]> {
   const db = createPublicClient();
   const { data, error } = await db
     .from('feed_articles')
     .select('id, title, source_name, published_at, url, category, effective_score')
     .order('effective_score', { ascending: false })
-    .limit(SWARM_LIMIT);
+    .limit(SKY_LIMIT);
 
   if (error) throw new Error(error.message);
 
@@ -41,25 +41,25 @@ async function fetchSwarmItems(): Promise<FireflyItem[]> {
 }
 
 // Durable cache: serves the last result for ~5 min without touching the DB.
-const cachedSwarmItems = unstable_cache(fetchSwarmItems, ['swarm-items-v1'], {
+const cachedSkyItems = unstable_cache(fetchSkyItems, ['nightsky-items-v1'], {
   revalidate: 300,
   tags: ['feed'],
 });
 
 // In-memory stale-on-error fallback (per warm instance) for outages past the cache window.
-let swarmLastGood: FireflyItem[] | null = null;
+let skyLastGood: FireflyItem[] | null = null;
 
 /**
- * Top ranked articles as firefly items — resilient to DB outages.
+ * Top ranked articles as night-sky fireflies — resilient to DB outages.
  * Serves cached data through blips; on hard failure returns the last good set
  * (or empty → "warming up") instead of throwing an error page.
  */
-export async function getSwarmItems(): Promise<FireflyItem[]> {
+export async function getNightSkyItems(): Promise<FireflyItem[]> {
   try {
-    const items = await cachedSwarmItems();
-    if (items.length) swarmLastGood = items;
+    const items = await cachedSkyItems();
+    if (items.length) skyLastGood = items;
     return items;
   } catch {
-    return swarmLastGood ?? [];
+    return skyLastGood ?? [];
   }
 }
