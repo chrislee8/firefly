@@ -7,6 +7,7 @@ const COLORS: Record<Category, string> = {
   Funding: '#86efac',
   Regulation: '#fca5a5',
   Research: '#c4b5fd',
+  Infrastructure: '#5eead4',
   Product: '#fcd34d',
   Opinion: '#f0abfc',
 };

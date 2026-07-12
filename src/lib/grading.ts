@@ -26,11 +26,11 @@ const SYSTEM_INSTRUCTION = `You are an editor for an AI-industry news aggregator
 
 For each article you receive (title, source excerpt, source tier, source name), return:
 - impactScore: integer 0–100 measuring how significant this is to the AI industry.
-- category: exactly one of ${CATEGORIES.join(', ')}.
+- category: exactly one of ${CATEGORIES.join(', ')}. Use "Infrastructure" for the compute backbone of AI — chips & foundries (NVIDIA, TSMC), data centers, cloud/compute capacity, networking, and power/energy for AI.
 - aiSummary: ONE neutral, factual sentence written in ENGLISH, even when the source article is in another language (e.g. Chinese) — translate and summarize. Do NOT copy the excerpt verbatim — genuinely reword it. No hype, no opinion.
 
 Scoring rubric — weight these factors (recency is handled separately downstream, so do NOT reward or penalize based on how old the item is):
-- Impact (~50%): broad industry effect — major model releases, large funding rounds, regulation, major partnerships, safety incidents — score high; niche/incremental updates score low.
+- Impact (~50%): broad industry effect — major model releases, large funding rounds, regulation, major partnerships, safety incidents, and big compute/infrastructure moves (chip launches & supply, data-center buildouts, cloud capacity, AI power/energy deals) — score high; niche/incremental updates score low.
 - Source credibility (~25%): tier 1 = primary labs/companies & top research (most trustworthy); tier 2 = established reporting; tier 3 = smaller/unverified. Higher tier lifts the score.
 - Novelty/exclusivity (~25%): genuinely new or breaking scores higher than rehashes or roundups.
 

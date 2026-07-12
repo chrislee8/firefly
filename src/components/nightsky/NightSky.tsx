@@ -23,6 +23,21 @@ interface CardState {
 const HIGH = '#ff4433';
 const LOW = '#ffd23f';
 
+interface CmdInfo {
+  name: string;
+  usage: string;
+  desc: string;
+  fill?: boolean; // clicking fills the input (needs an argument) vs runs immediately
+}
+const COMMANDS: CmdInfo[] = [
+  { name: 'search', usage: '/search <term>', desc: 'filter the sky by keyword', fill: true },
+  { name: 'chronicle', usage: '/chronicle', desc: 'time-travel by month — scroll to move' },
+  { name: 'style', usage: '/style firefly · circle · icon', desc: 'change the firefly look', fill: true },
+  { name: 'motion', usage: '/motion slow · normal · more', desc: 'drift speed', fill: true },
+  { name: 'list', usage: '/motion -l', desc: 'switch to the classic list view' },
+  { name: 'clear', usage: '/clear', desc: 'reset filters & modes' },
+];
+
 function timeLabel(minutesAgo: number): string {
   return minutesAgo < 60 ? `${minutesAgo}m ago` : `${Math.round(minutesAgo / 60)}h ago`;
 }
@@ -415,6 +430,22 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const mono = 'var(--font-plex), monospace';
   const display = 'var(--font-display), sans-serif';
 
+  // command menu (vertical list), filtered by what's typed
+  const typedCmd = cmdText.trim().replace(/^\//, '').split(/\s+/)[0].toLowerCase();
+  const matches = typedCmd
+    ? COMMANDS.filter((c) => c.name.startsWith(typedCmd) || c.usage.toLowerCase().includes(typedCmd))
+    : COMMANDS;
+  const shownCommands = matches.length ? matches : COMMANDS;
+  const pickCommand = (c: CmdInfo) => {
+    if (c.fill) {
+      setCmdText(c.name + ' ');
+      setCmdFeedback('');
+      setTimeout(() => cmdRef.current?.focus(), 0);
+    } else {
+      runCommand(c.name);
+    }
+  };
+
   return (
     <div
       style={{
@@ -489,22 +520,38 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         </div>
       )}
 
-      {/* Command bar */}
+      {/* Command bar + vertical menu */}
       {cmdOpen && (
-        <div style={{ position: 'absolute', left: '50%', bottom: 48, transform: 'translateX(-50%)', width: 480, maxWidth: '90vw', background: 'rgba(10,12,8,0.94)', border: '1px solid rgba(255,210,63,0.25)', borderRadius: 6, padding: '12px 16px', backdropFilter: 'blur(12px)', boxShadow: '0 12px 40px rgba(0,0,0,0.7)', animation: 'cardIn 0.15s ease-out' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ color: '#ffd23f', fontFamily: mono, fontSize: 14 }}>/</span>
+        <div style={{ position: 'absolute', left: '50%', bottom: 48, transform: 'translateX(-50%)', width: 480, maxWidth: '92vw', background: 'rgba(10,12,8,0.95)', border: '1px solid rgba(255,210,63,0.25)', borderRadius: 8, padding: '8px 8px 10px', backdropFilter: 'blur(12px)', boxShadow: '0 16px 48px rgba(0,0,0,0.7)', animation: 'cardIn 0.15s ease-out' }}>
+          {/* vertical command list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 6 }}>
+            {shownCommands.map((c) => (
+              <button
+                key={c.name}
+                onMouseDown={(e) => { e.preventDefault(); pickCommand(c); }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,210,63,0.08)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderRadius: 5, padding: '7px 10px', cursor: 'pointer' }}
+              >
+                <span style={{ fontFamily: mono, fontSize: 12.5, color: '#ffd23f', letterSpacing: '0.02em' }}>{c.usage}</span>
+                <span style={{ fontFamily: mono, fontSize: 10.5, color: 'rgba(242,240,230,0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.desc}</span>
+              </button>
+            ))}
+          </div>
+          {/* input row */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid rgba(242,240,230,0.1)', paddingTop: 9 }}>
+            <span style={{ color: '#ffd23f', fontFamily: mono, fontSize: 14, paddingLeft: 4 }}>/</span>
             <input
               ref={cmdRef}
               value={cmdText}
               onChange={(e) => { setCmdText(e.target.value); setCmdFeedback(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') runCommand(cmdText); e.stopPropagation(); }}
-              placeholder="chronicle · style firefly · search apple · motion -l · clear"
+              placeholder="type a command, or pick one above"
               style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f2f0e6', fontFamily: mono, fontSize: 13 }}
             />
           </div>
           {cmdFeedback && (
-            <div style={{ marginTop: 8, fontFamily: mono, fontSize: 10, color: 'rgba(255,210,63,0.7)', letterSpacing: '0.05em' }}>{cmdFeedback}</div>
+            <div style={{ marginTop: 8, marginLeft: 14, fontFamily: mono, fontSize: 10, color: 'rgba(255,210,63,0.7)', letterSpacing: '0.05em' }}>{cmdFeedback}</div>
           )}
         </div>
       )}

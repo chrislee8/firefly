@@ -8,6 +8,7 @@ export const CATEGORIES = [
   'Funding',
   'Regulation',
   'Research',
+  'Infrastructure',
   'Product',
   'Opinion',
 ] as const;
