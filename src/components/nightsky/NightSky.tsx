@@ -1,11 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
 import type { FireflyItem } from '@/lib/nightsky';
 
 type Motion = 'slow' | 'normal' | 'more';
+type SkyStyle = 'circle' | 'firefly' | 'icon';
 
 interface CardState {
   title: string;
@@ -26,6 +27,17 @@ function timeLabel(minutesAgo: number): string {
   return minutesAgo < 60 ? `${minutesAgo}m ago` : `${Math.round(minutesAgo / 60)}h ago`;
 }
 
+// month key = year*12 + monthIndex  (comparable / steppable)
+function monthKeyOf(iso: string): number {
+  const d = new Date(iso);
+  return d.getFullYear() * 12 + d.getMonth();
+}
+function monthKeyLabel(mk: number): string {
+  const y = Math.floor(mk / 12);
+  const m = ((mk % 12) + 12) % 12;
+  return new Date(y, m, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+}
+
 export function NightSky({ items }: { items: FireflyItem[] }) {
   const router = useRouter();
   const mountRef = useRef<HTMLDivElement>(null);
@@ -39,6 +51,21 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const [cmdFeedback, setCmdFeedback] = useState('');
   const [motion, setMotion] = useState<Motion>('normal');
   const [filter, setFilter] = useState('');
+  const [style, setStyle] = useState<SkyStyle>('circle');
+  const [chronicle, setChronicle] = useState(false);
+  const [chronicleMK, setChronicleMK] = useState(0);
+
+  // month range present in the data
+  const { minMK, maxMK } = useMemo(() => {
+    let mn = Infinity;
+    let mx = -Infinity;
+    for (const it of items) {
+      const mk = monthKeyOf(it.publishedAt);
+      if (mk < mn) mn = mk;
+      if (mk > mx) mx = mk;
+    }
+    return items.length ? { minMK: mn, maxMK: mx } : { minMK: 0, maxMK: 0 };
+  }, [items]);
 
   // Mirrors for the imperative animation loop (never re-create the scene).
   const motionRef = useRef(motion);
@@ -47,6 +74,24 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   filterRef.current = filter;
   const cardOpenRef = useRef(!!card);
   cardOpenRef.current = !!card;
+  const styleRef = useRef(style);
+  styleRef.current = style;
+  const chronicleRef = useRef(chronicle);
+  chronicleRef.current = chronicle;
+  const chronicleMKRef = useRef(chronicleMK);
+  chronicleMKRef.current = chronicleMK;
+  const boundsRef = useRef({ minMK, maxMK });
+  boundsRef.current = { minMK, maxMK };
+
+  // Scene handles for the style effect (swap sprite textures without rebuilding).
+  const apiRef = useRef<{ flies: THREE.Sprite[]; tex: Record<SkyStyle, THREE.Texture> } | null>(null);
+
+  const stepChronicle = useCallback((dir: number) => {
+    setChronicleMK((prev) => {
+      const { minMK: lo, maxMK: hi } = boundsRef.current;
+      return Math.min(hi, Math.max(lo, prev + dir));
+    });
+  }, []);
 
   // ---------- three.js scene ----------
   useEffect(() => {
@@ -62,18 +107,12 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     mount.appendChild(renderer.domElement);
 
-    // shared radial-gradient glow texture
-    const c = document.createElement('canvas');
-    c.width = c.height = 128;
-    const g2 = c.getContext('2d')!;
-    const grad = g2.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(255,255,255,1)');
-    grad.addColorStop(0.18, 'rgba(255,255,255,0.9)');
-    grad.addColorStop(0.45, 'rgba(255,255,255,0.25)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    g2.fillStyle = grad;
-    g2.fillRect(0, 0, 128, 128);
-    const tex = new THREE.CanvasTexture(c);
+    const tex: Record<SkyStyle, THREE.Texture> = {
+      circle: makeCircleTex(),
+      firefly: makeFireflyTex(),
+      icon: makeIconTex(),
+    };
+    const initialMap = tex[styleRef.current];
 
     const highC = new THREE.Color(HIGH);
     const lowC = new THREE.Color(LOW);
@@ -83,7 +122,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const t = count > 1 ? 1 - (item.rank - 1) / (count - 1) : 1;
       const color = lowC.clone().lerp(highC, Math.pow(t, 1.4));
       const mat = new THREE.SpriteMaterial({
-        map: tex,
+        map: initialMap,
         color,
         transparent: true,
         blending: THREE.AdditiveBlending,
@@ -104,6 +143,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         item,
         t,
         size,
+        monthKey: monthKeyOf(item.publishedAt),
         base: sp.position.clone(),
         phase: Math.random() * Math.PI * 2,
         pulse: 0.5 + Math.random() * 1.4,
@@ -115,6 +155,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       scene.add(sp);
       return sp;
     });
+    apiRef.current = { flies, tex };
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(-10, -10);
@@ -159,6 +200,17 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('click', onClick);
 
+    // scroll = time-travel through months (only in chronicle mode)
+    let lastWheel = 0;
+    const onWheel = (e: WheelEvent) => {
+      if (!chronicleRef.current) return;
+      const now = performance.now();
+      if (now - lastWheel < 220 || Math.abs(e.deltaY) < 6) return;
+      lastWheel = now;
+      stepChronicle(e.deltaY > 0 ? -1 : 1); // down => older
+    };
+    window.addEventListener('wheel', onWheel, { passive: true });
+
     const onResize = () => {
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
@@ -174,10 +226,18 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const t = clock.getElapsedTime();
       const m = motionFactor(motionRef.current);
       const filt = filterRef.current.toLowerCase();
+      const chron = chronicleRef.current;
+      const chronMK = chronicleMKRef.current;
 
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(flies, false);
-      const next = (hits.length ? hits[0].object : null) as THREE.Sprite | null;
+      let next: THREE.Sprite | null = null;
+      for (const h of hits) {
+        if (((h.object.userData as { dim: number }).dim ?? 1) > 0.15) {
+          next = h.object as THREE.Sprite;
+          break;
+        }
+      }
       if (next !== hovered) {
         hovered = next;
         renderer.domElement.style.cursor = next ? 'pointer' : 'default';
@@ -192,14 +252,13 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       for (const sp of flies) {
         const d = sp.userData as {
           base: THREE.Vector3; wf: number[]; wp: number[]; phase: number; pulse: number;
-          baseOpacity: number; size: number; dim: number; item: FireflyItem;
+          baseOpacity: number; size: number; dim: number; item: FireflyItem; monthKey: number;
         };
         const isHover = sp === hovered;
-        const matched =
-          !filt ||
-          d.item.title.toLowerCase().includes(filt) ||
-          d.item.source.toLowerCase().includes(filt);
-        d.dim += ((matched ? 1 : 0.05) - d.dim) * 0.08;
+        const inMonth = !chron || d.monthKey === chronMK;
+        const matchesFilter = !filt || d.item.title.toLowerCase().includes(filt) || d.item.source.toLowerCase().includes(filt);
+        const dimTarget = !inMonth ? 0 : matchesFilter ? 1 : 0.05;
+        d.dim += (dimTarget - d.dim) * 0.08;
 
         if (!isHover) {
           const amp = 0.55 * m;
@@ -229,52 +288,95 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       disposed = true;
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', onResize);
+      window.removeEventListener('wheel', onWheel);
       renderer.domElement.removeEventListener('pointermove', onMove);
       renderer.domElement.removeEventListener('click', onClick);
+      apiRef.current = null;
       flies.forEach((sp) => sp.material.dispose());
-      tex.dispose();
+      Object.values(tex).forEach((x) => x.dispose());
       renderer.dispose();
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
     };
-  }, [items]);
+  }, [items, stepChronicle]);
+
+  // swap sprite textures when /style changes (no scene rebuild)
+  useEffect(() => {
+    const api = apiRef.current;
+    if (!api) return;
+    const map = api.tex[style];
+    for (const sp of api.flies) {
+      sp.material.map = map;
+      sp.material.needsUpdate = true;
+    }
+  }, [style]);
 
   // ---------- commands ----------
   const runCommand = useCallback(
     (raw: string) => {
       const txt = raw.trim().replace(/^\//, '');
       const [cmd, ...rest] = txt.split(/\s+/);
-      const arg = rest.join(' ').trim();
+      const arg = rest.join(' ').trim().toLowerCase();
+      const close = () => {
+        setCmdOpen(false);
+        setCmdText('');
+      };
       if (cmd === 'search') {
         if (!arg) return setCmdFeedback('usage: /search <term> — /clear to reset');
         setFilter(arg);
-        setCmdOpen(false);
-        setCmdText('');
+        close();
       } else if (cmd === 'motion') {
         if (arg === '-l' || arg === 'list') return router.push('/list');
         if (arg === '-a' || arg === 'anim' || arg === 'animated' || arg === '') {
           setMotion('normal');
-          setCmdOpen(false);
-          setCmdText('');
+          setChronicle(false);
+          close();
           return;
         }
         const map: Record<string, Motion> = { slow: 'slow', calm: 'slow', more: 'more', normal: 'normal', reset: 'normal' };
         if (map[arg]) {
           setMotion(map[arg]);
-          setCmdOpen(false);
-          setCmdText('');
+          close();
         } else {
           setCmdFeedback('usage: /motion slow | normal | more | -l (list) | -a (animated)');
+        }
+      } else if (cmd === 'style') {
+        const order: SkyStyle[] = ['circle', 'firefly', 'icon'];
+        if (arg === 'firefly' || arg === 'real') {
+          setStyle('firefly');
+          close();
+        } else if (arg === 'circle' || arg === 'dot' || arg === 'glow') {
+          setStyle('circle');
+          close();
+        } else if (arg === 'icon' || arg === 'star' || arg === '✦') {
+          setStyle('icon');
+          close();
+        } else if (arg === '') {
+          setStyle((s) => order[(order.indexOf(s) + 1) % order.length]); // cycle
+          close();
+        } else {
+          setCmdFeedback('usage: /style firefly | circle | icon');
+        }
+      } else if (cmd === 'chronicle' || cmd === 'chron' || cmd === 'time') {
+        if (arg === 'off') {
+          setChronicle(false);
+          close();
+        } else {
+          setChronicle((on) => {
+            if (!on) setChronicleMK(boundsRef.current.maxMK);
+            return !on;
+          });
+          close();
         }
       } else if (cmd === 'clear') {
         setFilter('');
         setMotion('normal');
+        setChronicle(false);
         setCard(null);
-        setCmdOpen(false);
-        setCmdText('');
+        close();
       } else if (cmd === 'list') {
         router.push('/list');
       } else {
-        setCmdFeedback('unknown command — try: search, motion, list, clear');
+        setCmdFeedback('unknown — try: search, chronicle, style, motion, list, clear');
       }
     },
     [router]
@@ -299,10 +401,16 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   }, [cmdOpen]);
 
   // status line
-  const parts: string[] = [];
-  if (filter) parts.push('FILTER: ' + filter.toUpperCase());
-  if (motion !== 'normal') parts.push('MOTION: ' + motion.toUpperCase());
-  const statusLine = parts.length ? parts.join('   ·   ') + '   ·   / TO CHANGE' : 'PRESS / FOR COMMANDS';
+  let statusLine = 'PRESS / FOR COMMANDS';
+  if (chronicle) {
+    statusLine = `CHRONICLE · ${monthKeyLabel(chronicleMK)} · SCROLL TO TIME-TRAVEL · /clear TO EXIT`;
+  } else {
+    const parts: string[] = [];
+    if (filter) parts.push('FILTER: ' + filter.toUpperCase());
+    if (motion !== 'normal') parts.push('MOTION: ' + motion.toUpperCase());
+    if (style !== 'circle') parts.push('STYLE: ' + style.toUpperCase());
+    if (parts.length) statusLine = parts.join('   ·   ') + '   ·   / TO CHANGE';
+  }
 
   const mono = 'var(--font-plex), monospace';
   const display = 'var(--font-display), sans-serif';
@@ -319,6 +427,18 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       }}
     >
       <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
+
+      {/* Chronicle period label */}
+      {chronicle && (
+        <div style={{ position: 'absolute', top: 92, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none', userSelect: 'none', textAlign: 'center' }}>
+          <div style={{ color: 'rgba(242,240,230,0.92)', fontSize: 34, fontWeight: 700, letterSpacing: '0.12em', textShadow: '0 0 24px rgba(255,210,63,0.25)' }}>
+            {monthKeyLabel(chronicleMK)}
+          </div>
+          <div style={{ marginTop: 6, color: 'rgba(242,240,230,0.35)', fontFamily: mono, fontSize: 10, letterSpacing: '0.22em' }}>
+            {chronicleMK <= minMK ? 'OLDEST ON RECORD' : 'SCROLL ↓ FOR OLDER'}
+          </div>
+        </div>
+      )}
 
       {/* Logo */}
       <div style={{ position: 'absolute', top: 28, left: 32, display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'none', userSelect: 'none' }}>
@@ -371,7 +491,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
 
       {/* Command bar */}
       {cmdOpen && (
-        <div style={{ position: 'absolute', left: '50%', bottom: 48, transform: 'translateX(-50%)', width: 440, maxWidth: '90vw', background: 'rgba(10,12,8,0.94)', border: '1px solid rgba(255,210,63,0.25)', borderRadius: 6, padding: '12px 16px', backdropFilter: 'blur(12px)', boxShadow: '0 12px 40px rgba(0,0,0,0.7)', animation: 'cardIn 0.15s ease-out' }}>
+        <div style={{ position: 'absolute', left: '50%', bottom: 48, transform: 'translateX(-50%)', width: 480, maxWidth: '90vw', background: 'rgba(10,12,8,0.94)', border: '1px solid rgba(255,210,63,0.25)', borderRadius: 6, padding: '12px 16px', backdropFilter: 'blur(12px)', boxShadow: '0 12px 40px rgba(0,0,0,0.7)', animation: 'cardIn 0.15s ease-out' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ color: '#ffd23f', fontFamily: mono, fontSize: 14 }}>/</span>
             <input
@@ -379,7 +499,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
               value={cmdText}
               onChange={(e) => { setCmdText(e.target.value); setCmdFeedback(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') runCommand(cmdText); e.stopPropagation(); }}
-              placeholder="search apple · motion slow · motion -l (list) · clear"
+              placeholder="chronicle · style firefly · search apple · motion -l · clear"
               style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f2f0e6', fontFamily: mono, fontSize: 13 }}
             />
           </div>
@@ -405,4 +525,81 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
 
 function motionFactor(m: Motion): number {
   return m === 'slow' ? 0.35 : m === 'more' ? 2.4 : 1;
+}
+
+// ---------- sprite textures (white on transparent; tinted by rank color, additively blended) ----------
+function makeCircleTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.18, 'rgba(255,255,255,0.9)');
+  grad.addColorStop(0.45, 'rgba(255,255,255,0.25)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+
+function makeIconTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  const bloom = g.createRadialGradient(64, 64, 0, 64, 64, 60);
+  bloom.addColorStop(0, 'rgba(255,255,255,0.45)');
+  bloom.addColorStop(0.5, 'rgba(255,255,255,0.08)');
+  bloom.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = bloom;
+  g.fillRect(0, 0, 128, 128);
+  g.save();
+  g.translate(64, 64);
+  g.fillStyle = 'rgba(255,255,255,1)';
+  g.shadowColor = 'rgba(255,255,255,0.9)';
+  g.shadowBlur = 8;
+  const spikes = 4;
+  const outer = 52;
+  const inner = 13;
+  const step = Math.PI / spikes;
+  let rot = -Math.PI / 2;
+  g.beginPath();
+  for (let i = 0; i < spikes * 2; i++) {
+    const rad = i % 2 === 0 ? outer : inner;
+    const x = Math.cos(rot) * rad;
+    const y = Math.sin(rot) * rad;
+    i === 0 ? g.moveTo(x, y) : g.lineTo(x, y);
+    rot += step;
+  }
+  g.closePath();
+  g.fill();
+  g.restore();
+  return new THREE.CanvasTexture(c);
+}
+
+function makeFireflyTex(): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d')!;
+  // ambient glow
+  let grad = g.createRadialGradient(64, 74, 4, 64, 74, 54);
+  grad.addColorStop(0, 'rgba(255,255,255,0.8)');
+  grad.addColorStop(0.35, 'rgba(255,255,255,0.2)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  // faint wings
+  g.fillStyle = 'rgba(255,255,255,0.13)';
+  g.beginPath(); g.ellipse(48, 58, 11, 19, -0.5, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(80, 58, 11, 19, 0.5, 0, Math.PI * 2); g.fill();
+  // body / head (upper, dim)
+  g.fillStyle = 'rgba(255,255,255,0.32)';
+  g.beginPath(); g.ellipse(64, 50, 8, 14, 0, 0, Math.PI * 2); g.fill();
+  // bright abdomen (lower)
+  grad = g.createRadialGradient(64, 84, 0, 64, 84, 22);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.55, 'rgba(255,255,255,0.75)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.beginPath(); g.ellipse(64, 84, 15, 20, 0, 0, Math.PI * 2); g.fill();
+  return new THREE.CanvasTexture(c);
 }

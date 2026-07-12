@@ -8,6 +8,7 @@ export interface FireflyItem {
   title: string;
   source: string;
   minutesAgo: number;
+  publishedAt: string; // ISO — used by /chronicle to bucket by month
   rank: number;
   url: string;
   category: Category;
@@ -33,6 +34,7 @@ async function fetchSkyItems(): Promise<FireflyItem[]> {
     title: row.title as string,
     source: row.source_name as string,
     minutesAgo: Math.max(1, Math.round((now - new Date(row.published_at as string).getTime()) / 60000)),
+    publishedAt: row.published_at as string,
     rank: i + 1,
     url: row.url as string,
     category: row.category as Category,

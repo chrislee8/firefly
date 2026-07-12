@@ -58,15 +58,15 @@
 - [x] Custom domain live: **https://www.chrislee8.com**
 - [x] Fixed prod "Feed unavailable": baked public Supabase URL+anon as code fallbacks (Vercel NEXT_PUBLIC build env proved unreliable)
 - [x] **Resilient cached reads**: night-sky + list wrapped in `unstable_cache` (~5min) + stale-on-error fallback — a DB outage serves last-known-good news (fault-injection verified) instead of an error page. Gemini failures already graceful.
+- [x] **`/chronicle`** time-scrub: month/year label + scroll to step back through time (only that month's fireflies render). **`/style`** switches firefly look: circle · firefly · ✦ icon. *(chronicle history grows as more months accrue; today all data is one month.)*
 
 ---
 
-## Next up — `/chronicle` time-scrub mode (TODO)
-Turn the night sky into a scrollable timeline of the news:
-- [ ] `/chronicle` command shows a **period label** (current month + year) on screen
-- [ ] Only fireflies from **that month/year** render → far fewer on screen at once
-- [ ] **Scrolling down** steps back through time (previous month, etc.), replacing the night sky with that period's news
-- [ ] Build a first pass and iterate on the feel ("let's see how it works")
+## Next up — firefly-in-a-jar on article open (TODO)
+When you click a firefly to read an article, capture it in a little glass jar:
+- [ ] Small SVG/CSS **jar** appears (near the card) with the article's rank-colored firefly glowing/pulsing inside
+- [ ] Gentle animation — firefly drifts and blinks within the jar; releasing (close) lets it fly back
+- [ ] Decide accent treatment on open (green vs black vs the jar itself) once we see the jar in place
 
 ## Phase 2 — Search & corroboration (optional)
 - [ ] Fuzzy title dedup across outlets → `article_source_links` + "also covered by"
