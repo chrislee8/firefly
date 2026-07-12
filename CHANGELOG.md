@@ -54,8 +54,18 @@
 - [x] `unique(feed_url)` constraint for idempotent source seeds
 - [x] Grading capped to one batch/call + cron loops it (Vercel Hobby 60s function limit)
 - [x] Dead/stale feeds deactivated: Anthropic, Meta AI, Qwen, Synced (no public RSS / stale)
+- [x] **Firefly-swarm front page** (three.js): each ranked article is a glowing 3D firefly (rank → color/size/depth), hover tooltip, click-to-open card, `/` command bar; `/motion -l` list ⇄ `/motion -a` swarm. Classic list at `/list`.
+- [x] Custom domain live: **https://www.chrislee8.com**
+- [x] Fixed prod "Feed unavailable": baked public Supabase URL+anon as code fallbacks (Vercel NEXT_PUBLIC build env proved unreliable)
 
 ---
+
+## Next up — `/chronicle` time-scrub mode (TODO)
+Turn the swarm into a scrollable timeline of the news:
+- [ ] `/chronicle` command shows a **period label** (current month + year) on screen
+- [ ] Only fireflies from **that month/year** render → far fewer on screen at once
+- [ ] **Scrolling down** steps back through time (previous month, etc.), replacing the swarm with that period's news
+- [ ] Build a first pass and iterate on the feel ("let's see how it works")
 
 ## Phase 2 — Search & corroboration (optional)
 - [ ] Fuzzy title dedup across outlets → `article_source_links` + "also covered by"
