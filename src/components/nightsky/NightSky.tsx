@@ -11,6 +11,7 @@ type SkyStyle = 'circle' | 'firefly' | 'icon';
 type Language = 'all' | 'english' | 'chinese';
 
 interface CardState {
+  id: string;
   title: string;
   source: string;
   time: string;
@@ -24,6 +25,8 @@ interface CardState {
 
 const HIGH = '#ff4433';
 const LOW = '#ffd23f';
+const SELECTED = '#4ade80'; // a clicked firefly turns green
+const SELECTED_COLOR = new THREE.Color(SELECTED);
 
 // Terse command list (menu shows only the token; /help explains them).
 interface CmdInfo { name: string; token: string; desc: string; fill?: boolean }
@@ -82,6 +85,9 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const [category, setCategory] = useState<Category | null>(null);
   const [chronicle, setChronicle] = useState(false);
   const [chronicleMK, setChronicleMK] = useState(0);
+  const [reelScale, setReelScale] = useState(1);
+  const [reelHover, setReelHover] = useState(false);
+  const reelBarRef = useRef<HTMLDivElement>(null);
 
   const { minMK, maxMK } = useMemo(() => {
     let mn = Infinity;
@@ -98,6 +104,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const motionRef = useRef(motion); motionRef.current = motion;
   const filterRef = useRef(filter); filterRef.current = filter;
   const cardOpenRef = useRef(!!card); cardOpenRef.current = !!card;
+  const selectedIdRef = useRef<string | null>(null); selectedIdRef.current = card?.id ?? null;
   const styleRef = useRef(style); styleRef.current = style;
   const langRef = useRef(language); langRef.current = language;
   const catRef = useRef(category); catRef.current = category;
@@ -159,6 +166,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       sp.scale.setScalar(size);
       sp.userData = {
         item, t, size,
+        baseColor: color.clone(),
         monthKey: monthKeyOf(item.publishedAt),
         isChinese: hasCJK(item.title),
         base: sp.position.clone(),
@@ -207,13 +215,13 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         const p = toScreen(target.position);
         const w = mount.clientWidth;
         const h = mount.clientHeight;
-        const hex = '#' + target.material.color.getHexString();
         setCard({
+          id: d.item.id,
           title: d.item.title, source: d.item.source, time: timeLabel(d.item.minutesAgo),
           rank: d.item.rank, url: d.item.url,
           x: Math.min(Math.max(p.x + 18, 12), w - 320),
           y: Math.min(Math.max(p.y - 20, 12), h - 190),
-          color: hex, glow: hex + '99',
+          color: SELECTED, glow: SELECTED + '99',
         });
         setHoverTitle(null);
       } else if (cardOpenRef.current) {
@@ -251,6 +259,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const chronMK = chronicleMKRef.current;
       const lang = langRef.current;
       const cat = catRef.current;
+      const selId = selectedIdRef.current;
 
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(flies, false);
@@ -272,9 +281,10 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       for (const sp of flies) {
         const d = sp.userData as {
           base: THREE.Vector3; wf: number[]; wp: number[]; phase: number; pulse: number;
-          baseOpacity: number; size: number; dim: number; item: FireflyItem; monthKey: number; isChinese: boolean;
+          baseOpacity: number; size: number; dim: number; item: FireflyItem; monthKey: number; isChinese: boolean; baseColor: THREE.Color;
         };
         const isHover = sp === hovered;
+        sp.material.color.copy(selId !== null && d.item.id === selId ? SELECTED_COLOR : d.baseColor);
         const inMonth = !chron || d.monthKey === chronMK;
         const langOK = lang === 'all' || (lang === 'chinese' ? d.isChinese : !d.isChinese);
         const catOK = !cat || d.item.category === cat;
@@ -426,10 +436,24 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const focusMK = chronicle ? chronicleMK : maxMK;
   const reelMonths = items.length ? [-2, -1, 0, 1, 2].map((o) => focusMK + o) : [];
 
-  // firefly-jar position (next to the card)
-  const jar = card
-    ? { left: card.x > 92 ? card.x - 70 : card.x + 306, top: Math.max(8, card.y - 4) }
-    : null;
+  // vertical bar → adjust the reel font size (0.6×–1.8×)
+  const startReelResize = (e: { clientY: number }) => {
+    const apply = (clientY: number) => {
+      const track = reelBarRef.current;
+      if (!track) return;
+      const r = track.getBoundingClientRect();
+      const frac = Math.min(1, Math.max(0, 1 - (clientY - r.top) / r.height));
+      setReelScale(0.6 + frac * 1.2);
+    };
+    apply(e.clientY);
+    const move = (ev: PointerEvent) => apply(ev.clientY);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'radial-gradient(ellipse at 50% 60%, #0a0d07 0%, #050604 55%, #020302 100%)', fontFamily: display, cursor: 'default', overflow: 'hidden' }}>
@@ -444,32 +468,49 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         </div>
       </div>
 
-      {/* Slot-machine month reel (top-right) — tap a month to time-travel */}
+      {/* Slot-machine month reel (top-right) — tap a month to time-travel; hover → drag the bar to resize */}
       {reelMonths.length > 0 && (
-        <div style={{ position: 'absolute', top: 22, right: 30, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', userSelect: 'none', fontFamily: display }}>
-          {reelMonths.map((mk) => {
-            const dist = Math.abs(mk - focusMK);
-            const isFocus = dist === 0;
-            const inRange = mk >= minMK && mk <= maxMK;
-            return (
-              <div
-                key={mk}
-                onClick={() => selectMonth(mk)}
-                style={{
-                  cursor: inRange ? 'pointer' : 'default',
-                  fontSize: isFocus ? 30 : 26 - dist * 3,
-                  fontWeight: isFocus ? 500 : 300,
-                  lineHeight: 1.18,
-                  letterSpacing: '0.06em',
-                  color: `rgba(242,240,230,${isFocus ? 0.92 : Math.max(0.08, 0.3 - dist * 0.08)})`,
-                  textShadow: isFocus && chronicle ? '0 0 22px rgba(255,210,63,0.3)' : 'none',
-                  transition: 'font-size 0.25s, color 0.25s',
-                }}
-              >
-                {mkShort(mk)}
-              </div>
-            );
-          })}
+        <div
+          onMouseEnter={() => setReelHover(true)}
+          onMouseLeave={() => setReelHover(false)}
+          style={{ position: 'absolute', top: 20, right: 30, display: 'flex', alignItems: 'flex-start', gap: 12 }}
+        >
+          {/* font-size bar */}
+          <div
+            ref={reelBarRef}
+            onPointerDown={startReelResize}
+            aria-label="Resize date font"
+            style={{ width: 12, height: 150, marginTop: 10, position: 'relative', cursor: 'ns-resize', opacity: reelHover ? 1 : 0, transition: 'opacity 0.2s', display: 'flex', justifyContent: 'center', touchAction: 'none' }}
+          >
+            <div style={{ width: 1, height: '100%', background: 'rgba(242,240,230,0.22)' }} />
+            <div style={{ position: 'absolute', left: '50%', top: `${(1 - (reelScale - 0.6) / 1.2) * 100}%`, transform: 'translate(-50%,-50%)', width: 9, height: 9, borderRadius: '50%', background: '#ffd23f', boxShadow: '0 0 8px rgba(255,210,63,0.55)' }} />
+          </div>
+          {/* month numbers (thin, tall, ambient) */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', userSelect: 'none', fontFamily: 'var(--font-reel), var(--font-display), sans-serif' }}>
+            {reelMonths.map((mk) => {
+              const dist = Math.abs(mk - focusMK);
+              const isFocus = dist === 0;
+              const inRange = mk >= minMK && mk <= maxMK;
+              return (
+                <div
+                  key={mk}
+                  onClick={() => selectMonth(mk)}
+                  style={{
+                    cursor: inRange ? 'pointer' : 'default',
+                    fontSize: (isFocus ? 40 : 34 - dist * 4) * reelScale,
+                    fontWeight: isFocus ? 300 : 200,
+                    lineHeight: 1.0,
+                    letterSpacing: '0.16em',
+                    color: `rgba(242,240,230,${isFocus ? 0.88 : Math.max(0.07, 0.26 - dist * 0.07)})`,
+                    textShadow: isFocus && chronicle ? '0 0 22px rgba(255,210,63,0.3)' : 'none',
+                    transition: 'color 0.25s',
+                  }}
+                >
+                  {mkShort(mk)}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -477,19 +518,6 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       {hoverTitle && !card && (
         <div ref={tipRef} style={{ position: 'absolute', transform: 'translate(-50%, -140%)', pointerEvents: 'none', fontFamily: mono, fontSize: 11, color: 'rgba(242,240,230,0.85)', background: 'rgba(5,6,4,0.72)', border: '1px solid rgba(242,240,230,0.12)', padding: '5px 10px', borderRadius: 3, whiteSpace: 'nowrap', maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.02em' }}>
           {hoverTitle}
-        </div>
-      )}
-
-      {/* Firefly-in-a-jar (next to the card) */}
-      {card && jar && (
-        <div style={{ position: 'absolute', left: jar.left, top: jar.top, pointerEvents: 'none', animation: 'cardIn 0.22s ease-out' }}>
-          <svg width="58" height="82" viewBox="0 0 58 82">
-            <circle cx="29" cy="50" r="15" fill={card.color} opacity="0.22" />
-            <rect x="17" y="4" width="24" height="8" rx="2" fill="rgba(242,240,230,0.16)" stroke="rgba(242,240,230,0.4)" strokeWidth="1.2" />
-            <rect x="11" y="12" width="36" height="8" rx="2" fill="rgba(242,240,230,0.1)" stroke="rgba(242,240,230,0.42)" strokeWidth="1.2" />
-            <path d="M14 20 h30 v34 a11 11 0 0 1 -11 11 h-8 a11 11 0 0 1 -11 -11 z" fill="rgba(255,255,255,0.045)" stroke="rgba(242,240,230,0.4)" strokeWidth="1.4" />
-            <circle cx="29" cy="50" r="4.6" fill={card.color} style={{ filter: `drop-shadow(0 0 6px ${card.color})`, animation: 'blink 1.9s ease-in-out infinite' }} />
-          </svg>
         </div>
       )}
 
