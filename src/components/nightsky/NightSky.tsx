@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
+import type { Category } from '@/lib/types';
 import type { FireflyItem } from '@/lib/nightsky';
 
 type Motion = 'slow' | 'normal' | 'more';
 type SkyStyle = 'circle' | 'firefly' | 'icon';
+type Language = 'all' | 'english' | 'chinese';
 
 interface CardState {
   title: string;
@@ -23,35 +25,43 @@ interface CardState {
 const HIGH = '#ff4433';
 const LOW = '#ffd23f';
 
-interface CmdInfo {
-  name: string;
-  usage: string;
-  desc: string;
-  fill?: boolean; // clicking fills the input (needs an argument) vs runs immediately
-}
+// Terse command list (menu shows only the token; /help explains them).
+interface CmdInfo { name: string; token: string; desc: string; fill?: boolean }
 const COMMANDS: CmdInfo[] = [
-  { name: 'search', usage: '/search <term>', desc: 'filter the sky by keyword', fill: true },
-  { name: 'chronicle', usage: '/chronicle', desc: 'time-travel by month — scroll to move' },
-  { name: 'style', usage: '/style firefly · circle · icon', desc: 'change the firefly look', fill: true },
-  { name: 'motion', usage: '/motion slow · normal · more', desc: 'drift speed', fill: true },
-  { name: 'list', usage: '/motion -l', desc: 'switch to the classic list view' },
-  { name: 'clear', usage: '/clear', desc: 'reset filters & modes' },
+  { name: 'search', token: '/search', desc: 'filter the sky by keyword', fill: true },
+  { name: 'category', token: '/category', desc: 'topic: model · funding · regulation · research · infra · product · opinion', fill: true },
+  { name: 'language', token: '/language', desc: 'english · chinese · all', fill: true },
+  { name: 'style', token: '/style', desc: 'firefly · circle · icon', fill: true },
+  { name: 'motion', token: '/motion', desc: 'drift speed: slow · normal · more', fill: true },
+  { name: 'chronicle', token: '/chronicle', desc: 'time-travel by month' },
+  { name: 'list', token: '/motion -l', desc: 'switch to the classic list' },
+  { name: 'clear', token: '/clear', desc: 'reset filters & modes' },
+  { name: 'help', token: '/help', desc: 'show all commands with descriptions' },
 ];
+
+const CAT_ALIAS: Record<string, Category> = {
+  model: 'Model Release', release: 'Model Release', models: 'Model Release',
+  funding: 'Funding', money: 'Funding', raise: 'Funding',
+  regulation: 'Regulation', policy: 'Regulation', law: 'Regulation', legal: 'Regulation',
+  research: 'Research', ml: 'Research', paper: 'Research', papers: 'Research', data: 'Research', science: 'Research',
+  infra: 'Infrastructure', infrastructure: 'Infrastructure', chips: 'Infrastructure', datacenter: 'Infrastructure', hardware: 'Infrastructure', compute: 'Infrastructure', power: 'Infrastructure',
+  product: 'Product', products: 'Product',
+  opinion: 'Opinion', analysis: 'Opinion',
+};
 
 function timeLabel(minutesAgo: number): string {
   return minutesAgo < 60 ? `${minutesAgo}m ago` : `${Math.round(minutesAgo / 60)}h ago`;
 }
-
-// month key = year*12 + monthIndex  (comparable / steppable)
 function monthKeyOf(iso: string): number {
   const d = new Date(iso);
   return d.getFullYear() * 12 + d.getMonth();
 }
-function monthKeyLabel(mk: number): string {
+function mkShort(mk: number): string {
   const y = Math.floor(mk / 12);
   const m = ((mk % 12) + 12) % 12;
-  return new Date(y, m, 1).toLocaleString('en-US', { month: 'long', year: 'numeric' }).toUpperCase();
+  return `${String(m + 1).padStart(2, '0')}.${String(y % 100).padStart(2, '0')}`;
 }
+const hasCJK = (s: string) => /[㐀-鿿豈-﫿]/.test(s);
 
 export function NightSky({ items }: { items: FireflyItem[] }) {
   const router = useRouter();
@@ -64,13 +74,15 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdText, setCmdText] = useState('');
   const [cmdFeedback, setCmdFeedback] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
   const [motion, setMotion] = useState<Motion>('normal');
   const [filter, setFilter] = useState('');
   const [style, setStyle] = useState<SkyStyle>('circle');
+  const [language, setLanguage] = useState<Language>('all');
+  const [category, setCategory] = useState<Category | null>(null);
   const [chronicle, setChronicle] = useState(false);
   const [chronicleMK, setChronicleMK] = useState(0);
 
-  // month range present in the data
   const { minMK, maxMK } = useMemo(() => {
     let mn = Infinity;
     let mx = -Infinity;
@@ -82,23 +94,16 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     return items.length ? { minMK: mn, maxMK: mx } : { minMK: 0, maxMK: 0 };
   }, [items]);
 
-  // Mirrors for the imperative animation loop (never re-create the scene).
-  const motionRef = useRef(motion);
-  motionRef.current = motion;
-  const filterRef = useRef(filter);
-  filterRef.current = filter;
-  const cardOpenRef = useRef(!!card);
-  cardOpenRef.current = !!card;
-  const styleRef = useRef(style);
-  styleRef.current = style;
-  const chronicleRef = useRef(chronicle);
-  chronicleRef.current = chronicle;
-  const chronicleMKRef = useRef(chronicleMK);
-  chronicleMKRef.current = chronicleMK;
-  const boundsRef = useRef({ minMK, maxMK });
-  boundsRef.current = { minMK, maxMK };
-
-  // Scene handles for the style effect (swap sprite textures without rebuilding).
+  // Mirrors for the imperative loop.
+  const motionRef = useRef(motion); motionRef.current = motion;
+  const filterRef = useRef(filter); filterRef.current = filter;
+  const cardOpenRef = useRef(!!card); cardOpenRef.current = !!card;
+  const styleRef = useRef(style); styleRef.current = style;
+  const langRef = useRef(language); langRef.current = language;
+  const catRef = useRef(category); catRef.current = category;
+  const chronicleRef = useRef(chronicle); chronicleRef.current = chronicle;
+  const chronicleMKRef = useRef(chronicleMK); chronicleMKRef.current = chronicleMK;
+  const boundsRef = useRef({ minMK, maxMK }); boundsRef.current = { minMK, maxMK };
   const apiRef = useRef<{ flies: THREE.Sprite[]; tex: Record<SkyStyle, THREE.Texture> } | null>(null);
 
   const stepChronicle = useCallback((dir: number) => {
@@ -106,6 +111,12 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const { minMK: lo, maxMK: hi } = boundsRef.current;
       return Math.min(hi, Math.max(lo, prev + dir));
     });
+  }, []);
+  const selectMonth = useCallback((mk: number) => {
+    const { minMK: lo, maxMK: hi } = boundsRef.current;
+    if (mk < lo || mk > hi) return;
+    setChronicle(true);
+    setChronicleMK(mk);
   }, []);
 
   // ---------- three.js scene ----------
@@ -128,21 +139,13 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       icon: makeIconTex(),
     };
     const initialMap = tex[styleRef.current];
-
     const highC = new THREE.Color(HIGH);
     const lowC = new THREE.Color(LOW);
 
-    // rank 1 => t=1 (red, big, near); last => t=0 (yellow, small, far)
     const flies = items.map((item) => {
       const t = count > 1 ? 1 - (item.rank - 1) / (count - 1) : 1;
       const color = lowC.clone().lerp(highC, Math.pow(t, 1.4));
-      const mat = new THREE.SpriteMaterial({
-        map: initialMap,
-        color,
-        transparent: true,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      });
+      const mat = new THREE.SpriteMaterial({ map: initialMap, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
       const sp = new THREE.Sprite(mat);
       const r = 8 + Math.random() * 8;
       const th = Math.random() * Math.PI * 2;
@@ -155,10 +158,9 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const size = 0.28 + t * 0.85;
       sp.scale.setScalar(size);
       sp.userData = {
-        item,
-        t,
-        size,
+        item, t, size,
         monthKey: monthKeyOf(item.publishedAt),
+        isChinese: hasCJK(item.title),
         base: sp.position.clone(),
         phase: Math.random() * Math.PI * 2,
         pulse: 0.5 + Math.random() * 1.4,
@@ -181,7 +183,6 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const v = v3.clone().project(camera);
       return { x: ((v.x + 1) / 2) * mount.clientWidth, y: ((1 - v.y) / 2) * mount.clientHeight };
     };
-
     const onMove = (e: PointerEvent) => {
       const rect = renderer.domElement.getBoundingClientRect();
       pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -189,23 +190,30 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       mouseNorm.x = pointer.x;
       mouseNorm.y = pointer.y;
     };
-    const onClick = () => {
-      if (hovered) {
-        const d = hovered.userData as { item: FireflyItem };
-        const p = toScreen(hovered.position);
+    const onClick = (e: MouseEvent) => {
+      // Fresh raycast at the exact click/tap point so a first tap (no prior
+      // hover, e.g. on touch) reliably selects the firefly under the finger.
+      const rect = renderer.domElement.getBoundingClientRect();
+      const cx = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const cy = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(new THREE.Vector2(cx, cy), camera);
+      const hits = raycaster.intersectObjects(flies, false);
+      let target: THREE.Sprite | null = null;
+      for (const hHit of hits) {
+        if (((hHit.object.userData as { dim: number }).dim ?? 1) > 0.15) { target = hHit.object as THREE.Sprite; break; }
+      }
+      if (target) {
+        const d = target.userData as { item: FireflyItem };
+        const p = toScreen(target.position);
         const w = mount.clientWidth;
         const h = mount.clientHeight;
-        const hex = '#' + hovered.material.color.getHexString();
+        const hex = '#' + target.material.color.getHexString();
         setCard({
-          title: d.item.title,
-          source: d.item.source,
-          time: timeLabel(d.item.minutesAgo),
-          rank: d.item.rank,
-          url: d.item.url,
+          title: d.item.title, source: d.item.source, time: timeLabel(d.item.minutesAgo),
+          rank: d.item.rank, url: d.item.url,
           x: Math.min(Math.max(p.x + 18, 12), w - 320),
           y: Math.min(Math.max(p.y - 20, 12), h - 190),
-          color: hex,
-          glow: hex + '99',
+          color: hex, glow: hex + '99',
         });
         setHoverTitle(null);
       } else if (cardOpenRef.current) {
@@ -215,14 +223,13 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     renderer.domElement.addEventListener('pointermove', onMove);
     renderer.domElement.addEventListener('click', onClick);
 
-    // scroll = time-travel through months (only in chronicle mode)
     let lastWheel = 0;
     const onWheel = (e: WheelEvent) => {
       if (!chronicleRef.current) return;
       const now = performance.now();
       if (now - lastWheel < 220 || Math.abs(e.deltaY) < 6) return;
       lastWheel = now;
-      stepChronicle(e.deltaY > 0 ? -1 : 1); // down => older
+      stepChronicle(e.deltaY > 0 ? -1 : 1);
     };
     window.addEventListener('wheel', onWheel, { passive: true });
 
@@ -236,22 +243,20 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     const clock = new THREE.Clock();
     let raf = 0;
     let disposed = false;
-
     const tick = () => {
       const t = clock.getElapsedTime();
       const m = motionFactor(motionRef.current);
       const filt = filterRef.current.toLowerCase();
       const chron = chronicleRef.current;
       const chronMK = chronicleMKRef.current;
+      const lang = langRef.current;
+      const cat = catRef.current;
 
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(flies, false);
       let next: THREE.Sprite | null = null;
-      for (const h of hits) {
-        if (((h.object.userData as { dim: number }).dim ?? 1) > 0.15) {
-          next = h.object as THREE.Sprite;
-          break;
-        }
+      for (const hHit of hits) {
+        if (((hHit.object.userData as { dim: number }).dim ?? 1) > 0.15) { next = hHit.object as THREE.Sprite; break; }
       }
       if (next !== hovered) {
         hovered = next;
@@ -267,12 +272,16 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       for (const sp of flies) {
         const d = sp.userData as {
           base: THREE.Vector3; wf: number[]; wp: number[]; phase: number; pulse: number;
-          baseOpacity: number; size: number; dim: number; item: FireflyItem; monthKey: number;
+          baseOpacity: number; size: number; dim: number; item: FireflyItem; monthKey: number; isChinese: boolean;
         };
         const isHover = sp === hovered;
         const inMonth = !chron || d.monthKey === chronMK;
-        const matchesFilter = !filt || d.item.title.toLowerCase().includes(filt) || d.item.source.toLowerCase().includes(filt);
-        const dimTarget = !inMonth ? 0 : matchesFilter ? 1 : 0.05;
+        const langOK = lang === 'all' || (lang === 'chinese' ? d.isChinese : !d.isChinese);
+        const catOK = !cat || d.item.category === cat;
+        const searchOK = !filt || d.item.title.toLowerCase().includes(filt) || d.item.source.toLowerCase().includes(filt);
+        let dimTarget = 1;
+        if (!inMonth || !langOK || !catOK) dimTarget = 0;
+        else if (!searchOK) dimTarget = 0.05;
         d.dim += (dimTarget - d.dim) * 0.08;
 
         if (!isHover) {
@@ -281,7 +290,6 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
           sp.position.y = d.base.y + Math.sin(t * d.wf[1] * m + d.wp[1]) * amp * 0.8 + Math.cos(t * d.wf[2] * 3.1 * m + d.wp[0]) * amp * 0.25;
           sp.position.z = d.base.z + Math.sin(t * d.wf[2] * m + d.wp[2]) * amp * 0.5;
         }
-
         const s = Math.sin(t * d.pulse * (0.6 + 0.4 * m) + d.phase);
         const pulse = 0.22 + 0.78 * Math.pow(Math.max(0, s), 2.2) + 0.1 * Math.max(0, Math.sin(t * d.pulse * 3.7 + d.phase * 2)) * 0.5;
         sp.material.opacity = Math.min(1, d.baseOpacity * pulse * (isHover ? 1.6 : 1)) * d.dim;
@@ -294,7 +302,6 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       camera.position.y += (Math.cos(t * 0.04) * 1.0 + py - camera.position.y) * 0.02;
       camera.lookAt(0, 0, 2);
       renderer.render(scene, camera);
-
       if (!disposed) raf = requestAnimationFrame(tick);
     };
     tick();
@@ -314,84 +321,65 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     };
   }, [items, stepChronicle]);
 
-  // swap sprite textures when /style changes (no scene rebuild)
+  // swap textures on /style
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
     const map = api.tex[style];
-    for (const sp of api.flies) {
-      sp.material.map = map;
-      sp.material.needsUpdate = true;
-    }
+    for (const sp of api.flies) { sp.material.map = map; sp.material.needsUpdate = true; }
   }, [style]);
 
   // ---------- commands ----------
+  const openCmd = useCallback((focus: boolean) => {
+    setHelpOpen(false);
+    setCmdOpen(true);
+    setCmdText('');
+    setCmdFeedback('');
+    if (focus) setTimeout(() => cmdRef.current?.focus(), 30);
+  }, []);
+
   const runCommand = useCallback(
     (raw: string) => {
       const txt = raw.trim().replace(/^\//, '');
       const [cmd, ...rest] = txt.split(/\s+/);
       const arg = rest.join(' ').trim().toLowerCase();
-      const close = () => {
-        setCmdOpen(false);
-        setCmdText('');
-      };
+      const close = () => { setCmdOpen(false); setCmdText(''); };
       if (cmd === 'search') {
-        if (!arg) return setCmdFeedback('usage: /search <term> — /clear to reset');
-        setFilter(arg);
-        close();
+        if (!arg) return setCmdFeedback('usage: /search <term>');
+        setFilter(arg); close();
+      } else if (cmd === 'category' || cmd === 'topic' || cmd === 'cat') {
+        if (arg === 'off' || arg === 'all' || arg === 'clear') { setCategory(null); close(); }
+        else if (CAT_ALIAS[arg]) { setCategory(CAT_ALIAS[arg]); close(); }
+        else setCmdFeedback('topics: model · funding · regulation · research · infra · product · opinion · all');
+      } else if (cmd === 'language' || cmd === 'lang') {
+        if (arg === 'en' || arg === 'english') { setLanguage('english'); close(); }
+        else if (arg === 'cn' || arg === 'zh' || arg === 'chinese' || arg === '中文') { setLanguage('chinese'); close(); }
+        else if (arg === 'all' || arg === '') { setLanguage('all'); close(); }
+        else setCmdFeedback('usage: /language english · chinese · all');
       } else if (cmd === 'motion') {
         if (arg === '-l' || arg === 'list') return router.push('/list');
-        if (arg === '-a' || arg === 'anim' || arg === 'animated' || arg === '') {
-          setMotion('normal');
-          setChronicle(false);
-          close();
-          return;
-        }
+        if (arg === '-a' || arg === 'anim' || arg === 'animated' || arg === '') { setMotion('normal'); setChronicle(false); close(); return; }
         const map: Record<string, Motion> = { slow: 'slow', calm: 'slow', more: 'more', normal: 'normal', reset: 'normal' };
-        if (map[arg]) {
-          setMotion(map[arg]);
-          close();
-        } else {
-          setCmdFeedback('usage: /motion slow | normal | more | -l (list) | -a (animated)');
-        }
+        if (map[arg]) { setMotion(map[arg]); close(); }
+        else setCmdFeedback('usage: /motion slow · normal · more · -l (list)');
       } else if (cmd === 'style') {
         const order: SkyStyle[] = ['circle', 'firefly', 'icon'];
-        if (arg === 'firefly' || arg === 'real') {
-          setStyle('firefly');
-          close();
-        } else if (arg === 'circle' || arg === 'dot' || arg === 'glow') {
-          setStyle('circle');
-          close();
-        } else if (arg === 'icon' || arg === 'star' || arg === '✦') {
-          setStyle('icon');
-          close();
-        } else if (arg === '') {
-          setStyle((s) => order[(order.indexOf(s) + 1) % order.length]); // cycle
-          close();
-        } else {
-          setCmdFeedback('usage: /style firefly | circle | icon');
-        }
+        if (arg === 'firefly' || arg === 'real') { setStyle('firefly'); close(); }
+        else if (arg === 'circle' || arg === 'dot' || arg === 'glow') { setStyle('circle'); close(); }
+        else if (arg === 'icon' || arg === 'star') { setStyle('icon'); close(); }
+        else if (arg === '') { setStyle((s) => order[(order.indexOf(s) + 1) % order.length]); close(); }
+        else setCmdFeedback('usage: /style firefly · circle · icon');
       } else if (cmd === 'chronicle' || cmd === 'chron' || cmd === 'time') {
-        if (arg === 'off') {
-          setChronicle(false);
-          close();
-        } else {
-          setChronicle((on) => {
-            if (!on) setChronicleMK(boundsRef.current.maxMK);
-            return !on;
-          });
-          close();
-        }
+        if (arg === 'off') { setChronicle(false); close(); }
+        else { setChronicle((on) => { if (!on) setChronicleMK(boundsRef.current.maxMK); return !on; }); close(); }
+      } else if (cmd === 'help' || cmd === '?') {
+        setHelpOpen(true); close();
       } else if (cmd === 'clear') {
-        setFilter('');
-        setMotion('normal');
-        setChronicle(false);
-        setCard(null);
-        close();
+        setFilter(''); setMotion('normal'); setChronicle(false); setLanguage('all'); setCategory(null); setCard(null); close();
       } else if (cmd === 'list') {
         router.push('/list');
       } else {
-        setCmdFeedback('unknown — try: search, chronicle, style, motion, list, clear');
+        setCmdFeedback('unknown — /help for the full list');
       }
     },
     [router]
@@ -402,74 +390,50 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === '/' && !cmdOpen && document.activeElement?.tagName !== 'INPUT') {
         e.preventDefault();
-        setCmdOpen(true);
-        setCmdText('');
-        setCmdFeedback('');
-        setTimeout(() => cmdRef.current?.focus(), 30);
+        openCmd(true);
       } else if (e.key === 'Escape') {
-        setCmdOpen(false);
-        setCard(null);
+        setCmdOpen(false); setCard(null); setHelpOpen(false);
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cmdOpen]);
+  }, [cmdOpen, openCmd]);
 
   // status line
-  let statusLine = 'PRESS / FOR COMMANDS';
-  if (chronicle) {
-    statusLine = `CHRONICLE · ${monthKeyLabel(chronicleMK)} · SCROLL TO TIME-TRAVEL · /clear TO EXIT`;
-  } else {
+  let statusLine = '';
+  if (chronicle) statusLine = `CHRONICLE · ${mkShort(chronicleMK)} · TAP A MONTH OR SCROLL · /clear TO EXIT`;
+  else {
     const parts: string[] = [];
-    if (filter) parts.push('FILTER: ' + filter.toUpperCase());
+    if (filter) parts.push('SEARCH: ' + filter.toUpperCase());
+    if (category) parts.push('TOPIC: ' + category.toUpperCase());
+    if (language !== 'all') parts.push('LANG: ' + language.toUpperCase());
     if (motion !== 'normal') parts.push('MOTION: ' + motion.toUpperCase());
     if (style !== 'circle') parts.push('STYLE: ' + style.toUpperCase());
-    if (parts.length) statusLine = parts.join('   ·   ') + '   ·   / TO CHANGE';
+    statusLine = parts.length ? parts.join('   ·   ') : '';
   }
 
   const mono = 'var(--font-plex), monospace';
   const display = 'var(--font-display), sans-serif';
 
-  // command menu (vertical list), filtered by what's typed
   const typedCmd = cmdText.trim().replace(/^\//, '').split(/\s+/)[0].toLowerCase();
-  const matches = typedCmd
-    ? COMMANDS.filter((c) => c.name.startsWith(typedCmd) || c.usage.toLowerCase().includes(typedCmd))
-    : COMMANDS;
+  const matches = typedCmd ? COMMANDS.filter((c) => c.name.startsWith(typedCmd) || c.token.toLowerCase().includes(typedCmd)) : COMMANDS;
   const shownCommands = matches.length ? matches : COMMANDS;
   const pickCommand = (c: CmdInfo) => {
-    if (c.fill) {
-      setCmdText(c.name + ' ');
-      setCmdFeedback('');
-      setTimeout(() => cmdRef.current?.focus(), 0);
-    } else {
-      runCommand(c.name);
-    }
+    if (c.fill) { setCmdText(c.name + ' '); setCmdFeedback(''); setTimeout(() => cmdRef.current?.focus(), 0); }
+    else runCommand(c.name);
   };
 
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'radial-gradient(ellipse at 50% 60%, #0a0d07 0%, #050604 55%, #020302 100%)',
-        fontFamily: display,
-        cursor: 'default',
-        overflow: 'hidden',
-      }}
-    >
-      <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
+  const focusMK = chronicle ? chronicleMK : maxMK;
+  const reelMonths = items.length ? [-2, -1, 0, 1, 2].map((o) => focusMK + o) : [];
 
-      {/* Chronicle period label */}
-      {chronicle && (
-        <div style={{ position: 'absolute', top: 92, left: '50%', transform: 'translateX(-50%)', pointerEvents: 'none', userSelect: 'none', textAlign: 'center' }}>
-          <div style={{ color: 'rgba(242,240,230,0.92)', fontSize: 34, fontWeight: 700, letterSpacing: '0.12em', textShadow: '0 0 24px rgba(255,210,63,0.25)' }}>
-            {monthKeyLabel(chronicleMK)}
-          </div>
-          <div style={{ marginTop: 6, color: 'rgba(242,240,230,0.35)', fontFamily: mono, fontSize: 10, letterSpacing: '0.22em' }}>
-            {chronicleMK <= minMK ? 'OLDEST ON RECORD' : 'SCROLL ↓ FOR OLDER'}
-          </div>
-        </div>
-      )}
+  // firefly-jar position (next to the card)
+  const jar = card
+    ? { left: card.x > 92 ? card.x - 70 : card.x + 306, top: Math.max(8, card.y - 4) }
+    : null;
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'radial-gradient(ellipse at 50% 60%, #0a0d07 0%, #050604 55%, #020302 100%)', fontFamily: display, cursor: 'default', overflow: 'hidden' }}>
+      <div ref={mountRef} style={{ position: 'absolute', inset: 0 }} />
 
       {/* Logo */}
       <div style={{ position: 'absolute', top: 28, left: 32, display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'none', userSelect: 'none' }}>
@@ -480,25 +444,52 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         </div>
       </div>
 
-      {/* Legend */}
-      <div style={{ position: 'absolute', top: 34, right: 32, display: 'flex', alignItems: 'center', gap: 18, pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 10, letterSpacing: '0.12em', color: 'rgba(242,240,230,0.45)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#ff4433', boxShadow: '0 0 8px 2px rgba(255,68,51,0.6)' }} />
-          <span>TOP RANK</span>
+      {/* Slot-machine month reel (top-right) — tap a month to time-travel */}
+      {reelMonths.length > 0 && (
+        <div style={{ position: 'absolute', top: 22, right: 30, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', userSelect: 'none', fontFamily: display }}>
+          {reelMonths.map((mk) => {
+            const dist = Math.abs(mk - focusMK);
+            const isFocus = dist === 0;
+            const inRange = mk >= minMK && mk <= maxMK;
+            return (
+              <div
+                key={mk}
+                onClick={() => selectMonth(mk)}
+                style={{
+                  cursor: inRange ? 'pointer' : 'default',
+                  fontSize: isFocus ? 30 : 26 - dist * 3,
+                  fontWeight: isFocus ? 500 : 300,
+                  lineHeight: 1.18,
+                  letterSpacing: '0.06em',
+                  color: `rgba(242,240,230,${isFocus ? 0.92 : Math.max(0.08, 0.3 - dist * 0.08)})`,
+                  textShadow: isFocus && chronicle ? '0 0 22px rgba(255,210,63,0.3)' : 'none',
+                  transition: 'font-size 0.25s, color 0.25s',
+                }}
+              >
+                {mkShort(mk)}
+              </div>
+            );
+          })}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#ffd23f', boxShadow: '0 0 8px 2px rgba(255,210,63,0.5)' }} />
-          <span>LOW RANK</span>
-        </div>
-      </div>
+      )}
 
-      {/* Hover tooltip (positioned imperatively) */}
+      {/* Hover tooltip (desktop) */}
       {hoverTitle && !card && (
-        <div
-          ref={tipRef}
-          style={{ position: 'absolute', transform: 'translate(-50%, -140%)', pointerEvents: 'none', fontFamily: mono, fontSize: 11, color: 'rgba(242,240,230,0.85)', background: 'rgba(5,6,4,0.72)', border: '1px solid rgba(242,240,230,0.12)', padding: '5px 10px', borderRadius: 3, whiteSpace: 'nowrap', maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.02em' }}
-        >
+        <div ref={tipRef} style={{ position: 'absolute', transform: 'translate(-50%, -140%)', pointerEvents: 'none', fontFamily: mono, fontSize: 11, color: 'rgba(242,240,230,0.85)', background: 'rgba(5,6,4,0.72)', border: '1px solid rgba(242,240,230,0.12)', padding: '5px 10px', borderRadius: 3, whiteSpace: 'nowrap', maxWidth: 420, overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: '0.02em' }}>
           {hoverTitle}
+        </div>
+      )}
+
+      {/* Firefly-in-a-jar (next to the card) */}
+      {card && jar && (
+        <div style={{ position: 'absolute', left: jar.left, top: jar.top, pointerEvents: 'none', animation: 'cardIn 0.22s ease-out' }}>
+          <svg width="58" height="82" viewBox="0 0 58 82">
+            <circle cx="29" cy="50" r="15" fill={card.color} opacity="0.22" />
+            <rect x="17" y="4" width="24" height="8" rx="2" fill="rgba(242,240,230,0.16)" stroke="rgba(242,240,230,0.4)" strokeWidth="1.2" />
+            <rect x="11" y="12" width="36" height="8" rx="2" fill="rgba(242,240,230,0.1)" stroke="rgba(242,240,230,0.42)" strokeWidth="1.2" />
+            <path d="M14 20 h30 v34 a11 11 0 0 1 -11 11 h-8 a11 11 0 0 1 -11 -11 z" fill="rgba(255,255,255,0.045)" stroke="rgba(242,240,230,0.4)" strokeWidth="1.4" />
+            <circle cx="29" cy="50" r="4.6" fill={card.color} style={{ filter: `drop-shadow(0 0 6px ${card.color})`, animation: 'blink 1.9s ease-in-out infinite' }} />
+          </svg>
         </div>
       )}
 
@@ -520,46 +511,77 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         </div>
       )}
 
-      {/* Command bar + vertical menu */}
+      {/* Command menu (terse) */}
       {cmdOpen && (
-        <div style={{ position: 'absolute', left: '50%', bottom: 48, transform: 'translateX(-50%)', width: 480, maxWidth: '92vw', background: 'rgba(10,12,8,0.95)', border: '1px solid rgba(255,210,63,0.25)', borderRadius: 8, padding: '8px 8px 10px', backdropFilter: 'blur(12px)', boxShadow: '0 16px 48px rgba(0,0,0,0.7)', animation: 'cardIn 0.15s ease-out' }}>
-          {/* vertical command list */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 6 }}>
+        <div style={{ position: 'absolute', left: '50%', bottom: 68, transform: 'translateX(-50%)', width: 320, maxWidth: '92vw', background: 'rgba(10,12,8,0.95)', border: '1px solid rgba(255,210,63,0.25)', borderRadius: 8, padding: '6px 6px 8px', backdropFilter: 'blur(12px)', boxShadow: '0 16px 48px rgba(0,0,0,0.7)', animation: 'cardIn 0.15s ease-out' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 1, marginBottom: 4 }}>
             {shownCommands.map((c) => (
               <button
                 key={c.name}
                 onMouseDown={(e) => { e.preventDefault(); pickCommand(c); }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,210,63,0.08)')}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,210,63,0.09)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, width: '100%', textAlign: 'left', background: 'transparent', border: 'none', borderRadius: 5, padding: '7px 10px', cursor: 'pointer' }}
+                style={{ textAlign: 'left', width: '100%', background: 'transparent', border: 'none', borderRadius: 5, padding: '9px 12px', cursor: 'pointer', fontFamily: mono, fontSize: 13, color: '#ffd23f', letterSpacing: '0.03em' }}
               >
-                <span style={{ fontFamily: mono, fontSize: 12.5, color: '#ffd23f', letterSpacing: '0.02em' }}>{c.usage}</span>
-                <span style={{ fontFamily: mono, fontSize: 10.5, color: 'rgba(242,240,230,0.4)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.desc}</span>
+                {c.token}
               </button>
             ))}
           </div>
-          {/* input row */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid rgba(242,240,230,0.1)', paddingTop: 9 }}>
-            <span style={{ color: '#ffd23f', fontFamily: mono, fontSize: 14, paddingLeft: 4 }}>/</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, borderTop: '1px solid rgba(242,240,230,0.1)', paddingTop: 8 }}>
+            <span style={{ color: '#ffd23f', fontFamily: mono, fontSize: 14, paddingLeft: 6 }}>/</span>
             <input
               ref={cmdRef}
               value={cmdText}
               onChange={(e) => { setCmdText(e.target.value); setCmdFeedback(''); }}
               onKeyDown={(e) => { if (e.key === 'Enter') runCommand(cmdText); e.stopPropagation(); }}
-              placeholder="type a command, or pick one above"
+              placeholder="type or tap · /help"
               style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#f2f0e6', fontFamily: mono, fontSize: 13 }}
             />
           </div>
-          {cmdFeedback && (
-            <div style={{ marginTop: 8, marginLeft: 14, fontFamily: mono, fontSize: 10, color: 'rgba(255,210,63,0.7)', letterSpacing: '0.05em' }}>{cmdFeedback}</div>
-          )}
+          {cmdFeedback && <div style={{ marginTop: 7, marginLeft: 12, fontFamily: mono, fontSize: 10, color: 'rgba(255,210,63,0.7)', letterSpacing: '0.04em' }}>{cmdFeedback}</div>}
+        </div>
+      )}
+
+      {/* / launcher button (works on touch) */}
+      <button
+        onClick={() => (cmdOpen ? setCmdOpen(false) : openCmd(false))}
+        aria-label="Commands"
+        style={{ position: 'absolute', left: 24, bottom: 18, width: 40, height: 40, borderRadius: 9, background: 'rgba(10,12,8,0.9)', border: `1px solid ${cmdOpen ? 'rgba(255,210,63,0.5)' : 'rgba(255,210,63,0.28)'}`, color: '#ffd23f', fontFamily: mono, fontSize: 17, cursor: 'pointer', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+      >
+        /
+      </button>
+
+      {/* Help overlay */}
+      {helpOpen && (
+        <div onClick={() => setHelpOpen(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(2,3,2,0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'cardIn 0.15s ease-out', zIndex: 5 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: 460, maxWidth: '92vw', background: 'rgba(10,12,8,0.96)', border: '1px solid rgba(255,210,63,0.25)', borderRadius: 10, padding: '18px 20px', boxShadow: '0 20px 60px rgba(0,0,0,0.7)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+              <span style={{ color: '#f2f0e6', fontSize: 15, fontWeight: 600, letterSpacing: '0.06em' }}>COMMANDS</span>
+              <button onClick={() => setHelpOpen(false)} aria-label="Close" style={{ background: 'none', border: 'none', color: 'rgba(242,240,230,0.5)', cursor: 'pointer', fontSize: 15 }}>✕</button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+              {COMMANDS.map((c) => (
+                <div key={c.name} style={{ display: 'flex', gap: 12, alignItems: 'baseline' }}>
+                  <span style={{ fontFamily: mono, fontSize: 12.5, color: '#ffd23f', minWidth: 92 }}>{c.token}</span>
+                  <span style={{ fontFamily: mono, fontSize: 11.5, color: 'rgba(242,240,230,0.55)' }}>{c.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
       {/* Status line */}
-      <div style={{ position: 'absolute', left: '50%', bottom: 20, transform: 'translateX(-50%)', pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 10, letterSpacing: '0.18em', color: 'rgba(242,240,230,0.25)', whiteSpace: 'nowrap' }}>{statusLine}</div>
+      {statusLine && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 20, transform: 'translateX(-50%)', pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 10, letterSpacing: '0.16em', color: 'rgba(242,240,230,0.28)', whiteSpace: 'nowrap', maxWidth: '70vw', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine}</div>
+      )}
 
-      {/* Empty / warming-up state */}
+      {/* Footer credit */}
+      <div style={{ position: 'absolute', right: 28, bottom: 22, pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 9.5, letterSpacing: '0.12em', color: 'rgba(242,240,230,0.22)' }}>
+        DESIGNED &amp; CREATED BY CHRIS LEE · © 2026
+      </div>
+
+      {/* Empty state */}
       {items.length === 0 && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
           <div style={{ color: '#ffd23f', fontSize: 30, textShadow: '0 0 18px rgba(255,210,63,0.5)' }}>✦</div>
@@ -574,7 +596,7 @@ function motionFactor(m: Motion): number {
   return m === 'slow' ? 0.35 : m === 'more' ? 2.4 : 1;
 }
 
-// ---------- sprite textures (white on transparent; tinted by rank color, additively blended) ----------
+// ---------- sprite textures ----------
 function makeCircleTex(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -588,7 +610,6 @@ function makeCircleTex(): THREE.CanvasTexture {
   g.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(c);
 }
-
 function makeIconTex(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
@@ -622,26 +643,21 @@ function makeIconTex(): THREE.CanvasTexture {
   g.restore();
   return new THREE.CanvasTexture(c);
 }
-
 function makeFireflyTex(): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d')!;
-  // ambient glow
   let grad = g.createRadialGradient(64, 74, 4, 64, 74, 54);
   grad.addColorStop(0, 'rgba(255,255,255,0.8)');
   grad.addColorStop(0.35, 'rgba(255,255,255,0.2)');
   grad.addColorStop(1, 'rgba(255,255,255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
-  // faint wings
   g.fillStyle = 'rgba(255,255,255,0.13)';
   g.beginPath(); g.ellipse(48, 58, 11, 19, -0.5, 0, Math.PI * 2); g.fill();
   g.beginPath(); g.ellipse(80, 58, 11, 19, 0.5, 0, Math.PI * 2); g.fill();
-  // body / head (upper, dim)
   g.fillStyle = 'rgba(255,255,255,0.32)';
   g.beginPath(); g.ellipse(64, 50, 8, 14, 0, 0, Math.PI * 2); g.fill();
-  // bright abdomen (lower)
   grad = g.createRadialGradient(64, 84, 0, 64, 84, 22);
   grad.addColorStop(0, 'rgba(255,255,255,1)');
   grad.addColorStop(0.55, 'rgba(255,255,255,0.75)');
