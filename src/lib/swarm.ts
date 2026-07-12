@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache';
 import { createPublicClient } from '@/lib/supabase/server';
 import type { Category } from '@/lib/types';
 
@@ -15,8 +16,8 @@ export interface FireflyItem {
 
 const SWARM_LIMIT = 160; // design calls for 100–200 fireflies
 
-/** Top graded articles by effective (recency-decayed) score, mapped to firefly items. */
-export async function getSwarmItems(): Promise<FireflyItem[]> {
+/** Raw query — throws on DB failure (handled by the resilient wrapper below). */
+async function fetchSwarmItems(): Promise<FireflyItem[]> {
   const db = createPublicClient();
   const { data, error } = await db
     .from('feed_articles')
@@ -37,4 +38,28 @@ export async function getSwarmItems(): Promise<FireflyItem[]> {
     category: row.category as Category,
     score: Math.round(row.effective_score as number),
   }));
+}
+
+// Durable cache: serves the last result for ~5 min without touching the DB.
+const cachedSwarmItems = unstable_cache(fetchSwarmItems, ['swarm-items-v1'], {
+  revalidate: 300,
+  tags: ['feed'],
+});
+
+// In-memory stale-on-error fallback (per warm instance) for outages past the cache window.
+let swarmLastGood: FireflyItem[] | null = null;
+
+/**
+ * Top ranked articles as firefly items — resilient to DB outages.
+ * Serves cached data through blips; on hard failure returns the last good set
+ * (or empty → "warming up") instead of throwing an error page.
+ */
+export async function getSwarmItems(): Promise<FireflyItem[]> {
+  try {
+    const items = await cachedSwarmItems();
+    if (items.length) swarmLastGood = items;
+    return items;
+  } catch {
+    return swarmLastGood ?? [];
+  }
 }
