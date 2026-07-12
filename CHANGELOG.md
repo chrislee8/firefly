@@ -57,6 +57,7 @@
 - [x] **Firefly-swarm front page** (three.js): each ranked article is a glowing 3D firefly (rank → color/size/depth), hover tooltip, click-to-open card, `/` command bar; `/motion -l` list ⇄ `/motion -a` swarm. Classic list at `/list`.
 - [x] Custom domain live: **https://www.chrislee8.com**
 - [x] Fixed prod "Feed unavailable": baked public Supabase URL+anon as code fallbacks (Vercel NEXT_PUBLIC build env proved unreliable)
+- [x] **Resilient cached reads**: swarm + list wrapped in `unstable_cache` (~5min) + stale-on-error fallback — a DB outage serves last-known-good news (fault-injection verified) instead of an error page. Gemini failures already graceful.
 
 ---
 
