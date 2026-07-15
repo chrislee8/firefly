@@ -3,7 +3,10 @@ import { getGemini, GEMINI_MODEL } from '@/lib/gemini';
 import { createServiceClient } from '@/lib/supabase/server';
 import { CATEGORIES, type Category } from '@/lib/types';
 
-const BATCH_SIZE = 20;
+// 8 keeps a single Gemini call comfortably under Vercel Hobby's 60s function
+// cap. At 20 the model's structured-output generation was overrunning it,
+// timing out the cron grade step (504 FUNCTION_INVOCATION_TIMEOUT).
+const BATCH_SIZE = 8;
 
 // Article joined with its source tier — the grading input (functional spec §5.2).
 interface Gradable {

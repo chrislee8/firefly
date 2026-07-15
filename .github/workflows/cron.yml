@@ -22,9 +22,9 @@ jobs:
 
       - name: Grade pending articles (several batches)
         run: |
-          # Each call grades one batch (~30s, under Vercel's 60s cap).
+          # Each call grades one batch of 8 (well under Vercel's 60s cap).
           # Loop to drain more per cron cycle — the runner has no such limit.
-          for i in 1 2 3 4 5; do
+          for i in 1 2 3 4 5 6 7 8; do
             echo "grade pass $i";
             curl --fail --silent --show-error --max-time 90 \
               -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
