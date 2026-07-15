@@ -62,7 +62,8 @@
 - [x] Vertical `/` command menu (clickable list + filter-as-you-type).
 - [x] **+12 sources** — research/education (Google & Microsoft Research, MIT, BAIR, Ahead of AI, AWS ML), NVIDIA, and the AI-infrastructure layer (The Next Platform, Data Center Dynamics, The Register, IEEE Spectrum, ServeTheHome) — plus a new **`Infrastructure`** category (chips · data centers · power · networking) taught to the grader.
 - [x] Night-sky UX pass: slot-machine **month reel** (top-right, tap a month to time-travel), removed rank legend, **terse `/` menu** + **`/help`** overlay, **`/language`** (en·cn·all) & **`/category`** filters, footer credit, and mobile support (tappable **`/` button**, tap-to-run, tap reliably opens a firefly).
-- [x] Night-sky polish: **removed the jar**; a clicked firefly + its card turn **green**; reel font now **thin/tall** (Barlow Condensed 200) with a hover **font-size slider** (the vertical bar).
+- [x] Night-sky polish: **removed the jar**; reel font now **thin/tall** (Barlow Condensed 200) with a hover **font-size slider** (the vertical bar).
+- [x] Read-state: clicking **read** turns that firefly **green** (persisted in localStorage → skip it next time); **fresh (<24h)** articles render **white** (read-me-first); reel current month matches neighbor color (just larger); the `/` square is **touch-only** while desktop keeps the centered `/` hint.
 
 ---
 

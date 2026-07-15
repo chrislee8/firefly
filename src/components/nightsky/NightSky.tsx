@@ -25,8 +25,10 @@ interface CardState {
 
 const HIGH = '#ff4433';
 const LOW = '#ffd23f';
-const SELECTED = '#4ade80'; // a clicked firefly turns green
-const SELECTED_COLOR = new THREE.Color(SELECTED);
+const READ = '#4ade80'; // a read firefly turns green (so you skip it next time)
+const READ_COLOR = new THREE.Color(READ);
+const FRESH_COLOR = new THREE.Color('#f2f0e6'); // < 24h old → white (read me first)
+const READ_KEY = 'firefly-read';
 
 // Terse command list (menu shows only the token; /help explains them).
 interface CmdInfo { name: string; token: string; desc: string; fill?: boolean }
@@ -88,6 +90,8 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const [reelScale, setReelScale] = useState(1);
   const [reelHover, setReelHover] = useState(false);
   const reelBarRef = useRef<HTMLDivElement>(null);
+  const [read, setRead] = useState<Set<string>>(new Set());
+  const [isTouch, setIsTouch] = useState(false);
 
   const { minMK, maxMK } = useMemo(() => {
     let mn = Infinity;
@@ -104,7 +108,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const motionRef = useRef(motion); motionRef.current = motion;
   const filterRef = useRef(filter); filterRef.current = filter;
   const cardOpenRef = useRef(!!card); cardOpenRef.current = !!card;
-  const selectedIdRef = useRef<string | null>(null); selectedIdRef.current = card?.id ?? null;
+  const readSetRef = useRef(read); readSetRef.current = read;
   const styleRef = useRef(style); styleRef.current = style;
   const langRef = useRef(language); langRef.current = language;
   const catRef = useRef(category); catRef.current = category;
@@ -124,6 +128,24 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     if (mk < lo || mk > hi) return;
     setChronicle(true);
     setChronicleMK(mk);
+  }, []);
+  const markRead = useCallback((id: string) => {
+    setRead((prev) => {
+      if (prev.has(id)) return prev;
+      const n = new Set(prev);
+      n.add(id);
+      try { localStorage.setItem(READ_KEY, JSON.stringify([...n])); } catch {}
+      return n;
+    });
+  }, []);
+
+  // client-only: touch detection + restore read markers
+  useEffect(() => {
+    setIsTouch(typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches);
+    try {
+      const s = localStorage.getItem(READ_KEY);
+      if (s) setRead(new Set(JSON.parse(s) as string[]));
+    } catch {}
   }, []);
 
   // ---------- three.js scene ----------
@@ -215,13 +237,14 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         const p = toScreen(target.position);
         const w = mount.clientWidth;
         const h = mount.clientHeight;
+        const hex = '#' + target.material.color.getHexString(); // current display color (white if fresh)
         setCard({
           id: d.item.id,
           title: d.item.title, source: d.item.source, time: timeLabel(d.item.minutesAgo),
           rank: d.item.rank, url: d.item.url,
           x: Math.min(Math.max(p.x + 18, 12), w - 320),
           y: Math.min(Math.max(p.y - 20, 12), h - 190),
-          color: SELECTED, glow: SELECTED + '99',
+          color: hex, glow: hex + '99',
         });
         setHoverTitle(null);
       } else if (cardOpenRef.current) {
@@ -259,7 +282,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const chronMK = chronicleMKRef.current;
       const lang = langRef.current;
       const cat = catRef.current;
-      const selId = selectedIdRef.current;
+      const readSet = readSetRef.current;
 
       raycaster.setFromCamera(pointer, camera);
       const hits = raycaster.intersectObjects(flies, false);
@@ -284,7 +307,10 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
           baseOpacity: number; size: number; dim: number; item: FireflyItem; monthKey: number; isChinese: boolean; baseColor: THREE.Color;
         };
         const isHover = sp === hovered;
-        sp.material.color.copy(selId !== null && d.item.id === selId ? SELECTED_COLOR : d.baseColor);
+        // read → green · fresh (<24h) → white · else rank color
+        sp.material.color.copy(
+          readSet.has(d.item.id) ? READ_COLOR : d.item.minutesAgo < 1440 ? FRESH_COLOR : d.baseColor
+        );
         const inMonth = !chron || d.monthKey === chronMK;
         const langOK = lang === 'all' || (lang === 'chinese' ? d.isChinese : !d.isChinese);
         const catOK = !cat || d.item.category === cat;
@@ -501,8 +527,8 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
                     fontWeight: isFocus ? 300 : 200,
                     lineHeight: 1.0,
                     letterSpacing: '0.16em',
-                    color: `rgba(242,240,230,${isFocus ? 0.88 : Math.max(0.07, 0.26 - dist * 0.07)})`,
-                    textShadow: isFocus && chronicle ? '0 0 22px rgba(255,210,63,0.3)' : 'none',
+                    color: `rgba(242,240,230,${Math.max(0.1, 0.34 - dist * 0.07)})`,
+                    textShadow: isFocus && chronicle ? '0 0 20px rgba(255,210,63,0.28)' : 'none',
                     transition: 'color 0.25s',
                   }}
                 >
@@ -526,7 +552,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         <div style={{ position: 'absolute', left: card.x, top: card.y, width: 300, background: 'rgba(10,12,8,0.92)', border: '1px solid rgba(242,240,230,0.14)', borderRadius: 6, padding: '16px 18px', backdropFilter: 'blur(12px)', animation: 'cardIn 0.18s ease-out', boxShadow: '0 12px 40px rgba(0,0,0,0.6)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 8, height: 8, borderRadius: '50%', background: card.color, boxShadow: `0 0 10px 2px ${card.glow}` }} />
+              <div style={{ width: 8, height: 8, borderRadius: '50%', background: read.has(card.id) ? READ : card.color, boxShadow: `0 0 10px 2px ${read.has(card.id) ? READ + '99' : card.glow}` }} />
               <span style={{ fontFamily: mono, fontSize: 10, letterSpacing: '0.15em', color: 'rgba(242,240,230,0.5)' }}>RANK #{card.rank}</span>
             </div>
             <button onClick={() => setCard(null)} aria-label="Close" style={{ cursor: 'pointer', color: 'rgba(242,240,230,0.4)', fontSize: 14, lineHeight: 1, padding: '2px 4px', background: 'none', border: 'none' }}>✕</button>
@@ -534,7 +560,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
           <div style={{ color: '#f2f0e6', fontSize: 15, fontWeight: 500, lineHeight: 1.4, marginBottom: 10 }}>{card.title}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontFamily: mono, fontSize: 10, color: 'rgba(242,240,230,0.4)', letterSpacing: '0.08em' }}>{card.source} · {card.time}</span>
-            <a href={card.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.05em', color: '#ffd23f', textDecoration: 'none' }}>read →</a>
+            <a href={card.url} target="_blank" rel="noopener noreferrer" onClick={() => markRead(card.id)} style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.05em', color: read.has(card.id) ? READ : '#ffd23f', textDecoration: 'none' }}>{read.has(card.id) ? 'read ✓' : 'read →'}</a>
           </div>
         </div>
       )}
@@ -570,14 +596,16 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         </div>
       )}
 
-      {/* / launcher button (works on touch) */}
-      <button
-        onClick={() => (cmdOpen ? setCmdOpen(false) : openCmd(false))}
-        aria-label="Commands"
-        style={{ position: 'absolute', left: 24, bottom: 18, width: 40, height: 40, borderRadius: 9, background: 'rgba(10,12,8,0.9)', border: `1px solid ${cmdOpen ? 'rgba(255,210,63,0.5)' : 'rgba(255,210,63,0.28)'}`, color: '#ffd23f', fontFamily: mono, fontSize: 17, cursor: 'pointer', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
-      >
-        /
-      </button>
+      {/* / launcher button — touch devices only (desktop uses the / key) */}
+      {isTouch && (
+        <button
+          onClick={() => (cmdOpen ? setCmdOpen(false) : openCmd(false))}
+          aria-label="Commands"
+          style={{ position: 'absolute', left: 24, bottom: 18, width: 40, height: 40, borderRadius: 9, background: 'rgba(10,12,8,0.9)', border: `1px solid ${cmdOpen ? 'rgba(255,210,63,0.5)' : 'rgba(255,210,63,0.28)'}`, color: '#ffd23f', fontFamily: mono, fontSize: 17, cursor: 'pointer', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+        >
+          /
+        </button>
+      )}
 
       {/* Help overlay */}
       {helpOpen && (
@@ -599,13 +627,13 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         </div>
       )}
 
-      {/* Status line */}
-      {statusLine && (
-        <div style={{ position: 'absolute', left: '50%', bottom: 20, transform: 'translateX(-50%)', pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 10, letterSpacing: '0.16em', color: 'rgba(242,240,230,0.28)', whiteSpace: 'nowrap', maxWidth: '70vw', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine}</div>
+      {/* Status line / desktop hint (stacked above the footer) */}
+      {(statusLine || (!isTouch && !cmdOpen)) && (
+        <div style={{ position: 'absolute', left: '50%', bottom: 42, transform: 'translateX(-50%)', pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 10, letterSpacing: '0.18em', color: 'rgba(242,240,230,0.28)', whiteSpace: 'nowrap', maxWidth: '80vw', overflow: 'hidden', textOverflow: 'ellipsis' }}>{statusLine || 'PRESS / FOR COMMANDS'}</div>
       )}
 
       {/* Footer credit */}
-      <div style={{ position: 'absolute', right: 28, bottom: 22, pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 9.5, letterSpacing: '0.12em', color: 'rgba(242,240,230,0.22)' }}>
+      <div style={{ position: 'absolute', left: '50%', bottom: 18, transform: 'translateX(-50%)', pointerEvents: 'none', userSelect: 'none', fontFamily: mono, fontSize: 9.5, letterSpacing: '0.14em', color: 'rgba(242,240,230,0.22)', whiteSpace: 'nowrap' }}>
         DESIGNED &amp; CREATED BY CHRIS LEE · © 2026
       </div>
 
