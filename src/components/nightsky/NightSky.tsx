@@ -75,6 +75,18 @@ function mkShort(mk: number): string {
 }
 const hasCJK = (s: string) => /[㐀-鿿豈-﫿]/.test(s);
 
+// Normalizers for the firefly cloud: the raw spherical spread maxes out at
+// these magnitudes, so dividing by them yields a -1..1 position that layout()
+// maps onto the real frustum. Keeps the cloud's shape, drops the fixed size.
+const SPREAD_X = 24; // max |x| = r(16) * 1.5
+const SPREAD_Y = 13.6; // max |y| = r(16) * 0.85
+// World-unit inset so drift + a sprite's own radius can't carry it back over
+// the edge. Worst case is /motion -a: amp = 0.55 * 2.4, and x sums two sine
+// terms (amp + amp*0.3) for 1.72, plus the largest sprite radius 0.56 => 2.28
+// minimum. 2.6 leaves slack.
+const FIT_PAD = 2.6;
+const clamp1 = (n: number) => Math.max(-1, Math.min(1, n));
+
 export function NightSky({ items }: { items: FireflyItem[] }) {
   const router = useRouter();
   const mountRef = useRef<HTMLDivElement>(null);
@@ -189,19 +201,22 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const r = 8 + Math.random() * 8;
       const th = Math.random() * Math.PI * 2;
       const ph = Math.acos(2 * Math.random() - 1);
-      sp.position.set(
-        r * Math.sin(ph) * Math.cos(th) * 1.5,
-        r * Math.sin(ph) * Math.sin(th) * 0.85,
-        r * Math.cos(ph) * 0.5 + t * 9 - 3
-      );
+      // Keep the organic spherical cloud, but express x/y as normalized -1..1
+      // so layout() can map them onto whatever the camera can actually see.
+      // Previously these were absolute units against a fixed spread, which put
+      // fireflies outside the frustum — unreachable and unclickable.
+      const nx = clamp1((r * Math.sin(ph) * Math.cos(th) * 1.5) / SPREAD_X);
+      const ny = clamp1((r * Math.sin(ph) * Math.sin(th) * 0.85) / SPREAD_Y);
+      const z = r * Math.cos(ph) * 0.5 + t * 9 - 3;
       const size = 0.28 + t * 0.85;
       sp.scale.setScalar(size);
       sp.userData = {
+        nx, ny, z,
         item, t, size,
         baseColor: color.clone(),
         monthKey: monthKeyOf(item.publishedAt),
         isChinese: hasCJK(item.title),
-        base: sp.position.clone(),
+        base: new THREE.Vector3(), // filled by layout(), which needs the camera
         phase: Math.random() * Math.PI * 2,
         pulse: 0.5 + Math.random() * 1.4,
         wf: [0.13 + Math.random() * 0.2, 0.11 + Math.random() * 0.18, 0.09 + Math.random() * 0.15],
@@ -213,6 +228,30 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       return sp;
     });
     apiRef.current = { flies, tex };
+
+    /**
+     * Place every firefly inside what the camera can actually see.
+     *
+     * Half-height shrinks the closer a sprite sits to the camera, so a single
+     * fixed spread can't work: a firefly at z=+11 has barely half the visible
+     * height of one at z=0. We derive the frustum at each sprite's own depth
+     * and map its normalized -1..1 position onto that, minus PAD so drift and
+     * the sprite's own radius can't carry it back over the edge.
+     * Re-run on resize, since half-width tracks the aspect ratio.
+     */
+    const layout = () => {
+      const halfFov = (camera.fov / 2) * (Math.PI / 180);
+      for (const sp of flies) {
+        const d = sp.userData as { nx: number; ny: number; z: number; base: THREE.Vector3 };
+        const dist = camera.position.z - d.z; // always > 0: z maxes out near 14
+        const fullH = Math.tan(halfFov) * dist;
+        const halfH = Math.max(0.5, fullH - FIT_PAD);
+        const halfW = Math.max(0.5, fullH * camera.aspect - FIT_PAD);
+        d.base.set(d.nx * halfW, d.ny * halfH, d.z);
+        sp.position.copy(d.base);
+      }
+    };
+    layout();
 
     const raycaster = new THREE.Raycaster();
     const pointer = new THREE.Vector2(-10, -10);
@@ -278,6 +317,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       camera.aspect = mount.clientWidth / mount.clientHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(mount.clientWidth, mount.clientHeight);
+      layout(); // visible width tracks aspect — refit or a narrower window clips them
     };
     window.addEventListener('resize', onResize);
 
