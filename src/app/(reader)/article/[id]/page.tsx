@@ -6,6 +6,7 @@ import { timeAgo, hostOf } from '@/lib/format';
 import { slugify } from '@/lib/slug';
 import { CategoryPill } from '@/components/CategoryPill';
 import { ScoreBadge } from '@/components/ScoreBadge';
+import { safeHref } from '@/lib/safe-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,7 +73,7 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
       </div>
 
       <a
-        href={article.url}
+        href={safeHref(article.url)}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 rounded-lg border px-5 py-3 font-medium transition-colors hover:border-glow"

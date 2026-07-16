@@ -4,6 +4,7 @@ import { hostOf } from '@/lib/format';
 import { ArticleCard } from '@/components/ArticleCard';
 import { EmptyState } from '@/components/EmptyState';
 import { Pagination } from '@/components/Pagination';
+import { safeHref } from '@/lib/safe-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export default async function SourcePage({
             </p>
           </div>
           <a
-            href={source.url}
+            href={safeHref(source.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs hover:text-glow"
