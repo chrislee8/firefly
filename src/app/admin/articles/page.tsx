@@ -1,3 +1,4 @@
+import { getUser } from '@/lib/auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { ArticleAdmin, type AdminArticle } from '@/components/admin/ArticleAdmin';
 import { EmptyState } from '@/components/EmptyState';
@@ -13,6 +14,10 @@ interface GradeRow {
 }
 
 export default async function AdminArticlesPage() {
+  // See admin/page.tsx: the layout is not a security boundary — this page still
+  // executes for logged-out visitors, so it must gate itself before querying.
+  if (!(await getUser())) return null; // layout renders <LoginForm /> instead
+
   const db = createServiceClient();
   const { data } = await db
     .from('articles')
