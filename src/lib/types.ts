@@ -3,6 +3,10 @@
 export type FetchType = 'rss' | 'api';
 export type ArticleStatus = 'pending' | 'graded' | 'hidden';
 
+/** Where a source is based. Drives the /region command. */
+export const REGIONS = ['US', 'CN', 'EU', 'OTHER'] as const;
+export type Region = (typeof REGIONS)[number];
+
 export const CATEGORIES = [
   'Model Release',
   'Funding',
@@ -22,6 +26,7 @@ export interface Source {
   fetch_type: FetchType;
   tier: number;
   weight: number;
+  region: Region;
   category_hint: string | null;
   is_active: boolean;
   last_fetched_at: string | null;
@@ -66,6 +71,7 @@ export interface FeedArticle {
   created_at: string;
   source_name: string;
   source_tier: number;
+  source_region: Region;
   impact_score: number;
   category: Category;
   is_manual_override: boolean;
