@@ -1,5 +1,6 @@
 import Parser from 'rss-parser';
 import { createServiceClient } from '@/lib/supabase/server';
+import { isSafeHttpUrl } from '@/lib/safe-url';
 import type { ParsedItem, Source } from '@/lib/types';
 
 const parser = new Parser({ timeout: 15000 });
@@ -50,6 +51,7 @@ async function fetchSource(source: Source): Promise<ParsedItem[]> {
   for (const item of feed.items) {
     const url = item.link?.trim();
     if (!url || !item.title) continue;
+    if (!isSafeHttpUrl(url)) continue; // drop javascript:/data:/mailto: etc.
     const published =
       item.isoDate || item.pubDate || new Date().toISOString();
     const publishedTs = new Date(published).getTime();

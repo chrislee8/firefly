@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
 import type { Category } from '@/lib/types';
 import type { FireflyItem } from '@/lib/nightsky';
+import { safeHref } from '@/lib/safe-url';
 
 type Motion = 'slow' | 'normal' | 'more';
 type SkyStyle = 'circle' | 'firefly' | 'icon';
@@ -560,7 +561,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
           <div style={{ color: '#f2f0e6', fontSize: 15, fontWeight: 500, lineHeight: 1.4, marginBottom: 10 }}>{card.title}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontFamily: mono, fontSize: 10, color: 'rgba(242,240,230,0.4)', letterSpacing: '0.08em' }}>{card.source} · {card.time}</span>
-            <a href={card.url} target="_blank" rel="noopener noreferrer" onClick={() => markRead(card.id)} style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.05em', color: read.has(card.id) ? READ : '#ffd23f', textDecoration: 'none' }}>{read.has(card.id) ? 'read ✓' : 'read →'}</a>
+            <a href={safeHref(card.url)} target="_blank" rel="noopener noreferrer" onClick={() => markRead(card.id)} style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.05em', color: read.has(card.id) ? READ : '#ffd23f', textDecoration: 'none' }}>{read.has(card.id) ? 'read ✓' : 'read →'}</a>
           </div>
         </div>
       )}

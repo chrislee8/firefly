@@ -4,6 +4,7 @@ import { ScoreBadge } from '@/components/ScoreBadge';
 import { timeAgo, hostOf } from '@/lib/format';
 import { slugify } from '@/lib/slug';
 import type { FeedArticle } from '@/lib/types';
+import { safeHref } from '@/lib/safe-url';
 
 export function ArticleCard({ article }: { article: FeedArticle }) {
   return (
@@ -50,7 +51,7 @@ export function ArticleCard({ article }: { article: FeedArticle }) {
 
         <div className="mt-2">
           <a
-            href={article.url}
+            href={safeHref(article.url)}
             target="_blank"
             rel="noopener noreferrer"
             className="text-xs hover:text-glow"

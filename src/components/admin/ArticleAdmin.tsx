@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { CATEGORIES, type Category, type ArticleStatus } from '@/lib/types';
 import { timeAgo } from '@/lib/format';
+import { safeHref } from '@/lib/safe-url';
 
 export interface AdminArticle {
   id: string;
@@ -57,7 +58,7 @@ function Row({ article }: { article: AdminArticle }) {
   return (
     <tr className="border-t align-top" style={{ borderColor: 'var(--border)' }}>
       <td className="px-3 py-2">
-        <a href={article.url} target="_blank" rel="noopener noreferrer" className="font-medium hover:text-glow">
+        <a href={safeHref(article.url)} target="_blank" rel="noopener noreferrer" className="font-medium hover:text-glow">
           {article.title}
         </a>
         <div className="text-xs" style={{ color: 'var(--muted)' }}>
