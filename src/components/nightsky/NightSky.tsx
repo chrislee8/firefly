@@ -75,17 +75,11 @@ function mkShort(mk: number): string {
 }
 const hasCJK = (s: string) => /[㐀-鿿豈-﫿]/.test(s);
 
-// Normalizers for the firefly cloud: the raw spherical spread maxes out at
-// these magnitudes, so dividing by them yields a -1..1 position that layout()
-// maps onto the real frustum. Keeps the cloud's shape, drops the fixed size.
-const SPREAD_X = 24; // max |x| = r(16) * 1.5
-const SPREAD_Y = 13.6; // max |y| = r(16) * 0.85
 // World-unit inset so drift + a sprite's own radius can't carry it back over
 // the edge. Worst case is /motion -a: amp = 0.55 * 2.4, and x sums two sine
 // terms (amp + amp*0.3) for 1.72, plus the largest sprite radius 0.56 => 2.28
 // minimum. 2.6 leaves slack.
 const FIT_PAD = 2.6;
-const clamp1 = (n: number) => Math.max(-1, Math.min(1, n));
 
 export function NightSky({ items }: { items: FireflyItem[] }) {
   const router = useRouter();
@@ -199,15 +193,18 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const mat = new THREE.SpriteMaterial({ map: initialMap, color, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
       const sp = new THREE.Sprite(mat);
       const r = 8 + Math.random() * 8;
-      const th = Math.random() * Math.PI * 2;
       const ph = Math.acos(2 * Math.random() - 1);
-      // Keep the organic spherical cloud, but express x/y as normalized -1..1
-      // so layout() can map them onto whatever the camera can actually see.
-      // Previously these were absolute units against a fixed spread, which put
-      // fireflies outside the frustum — unreachable and unclickable.
-      const nx = clamp1((r * Math.sin(ph) * Math.cos(th) * 1.5) / SPREAD_X);
-      const ny = clamp1((r * Math.sin(ph) * Math.sin(th) * 0.85) / SPREAD_Y);
+      // Depth still comes from the spherical term (parallax + size variation),
+      // biased by rank so the brightest sit nearer the camera.
       const z = r * Math.cos(ph) * 0.5 + t * 9 - 3;
+      // x/y span the full normalized range so the sky fills the frame. A
+      // spherical spread only reaches its extremes when r, sin(ph) and cos(th)
+      // all peak together — vanishingly rare — so mapping it to the frustum
+      // left the cloud balled up in the middle with dead margins all round.
+      // layout() maps these onto what the camera actually sees, inset by
+      // FIT_PAD so nothing overruns the edge.
+      const nx = Math.random() * 2 - 1;
+      const ny = Math.random() * 2 - 1;
       const size = 0.28 + t * 0.85;
       sp.scale.setScalar(size);
       sp.userData = {
