@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as THREE from 'three';
-import type { Category } from '@/lib/types';
+import type { Category, Region } from '@/lib/types';
 import type { FireflyItem } from '@/lib/nightsky';
 import { safeHref } from '@/lib/safe-url';
 
@@ -36,6 +36,7 @@ interface CmdInfo { name: string; token: string; desc: string; fill?: boolean }
 const COMMANDS: CmdInfo[] = [
   { name: 'search', token: '/search', desc: 'filter the sky by keyword', fill: true },
   { name: 'category', token: '/category', desc: 'topic: model · funding · regulation · research · infra · product · opinion', fill: true },
+  { name: 'region', token: '/region', desc: 'source origin: us · cn — the sky defaults to us', fill: true },
   { name: 'language', token: '/language', desc: 'english · chinese · all', fill: true },
   { name: 'style', token: '/style', desc: 'firefly · circle · icon', fill: true },
   { name: 'motion', token: '/motion', desc: 'drift speed: slow · normal · more', fill: true },
@@ -44,6 +45,11 @@ const COMMANDS: CmdInfo[] = [
   { name: 'clear', token: '/clear', desc: 'reset filters & modes' },
   { name: 'help', token: '/help', desc: 'show all commands with descriptions' },
 ];
+
+const REGION_ALIAS: Record<string, Region> = {
+  us: 'US', usa: 'US', america: 'US', default: 'US', home: 'US',
+  cn: 'CN', china: 'CN', chinese: 'CN', prc: 'CN', 中国: 'CN',
+};
 
 const CAT_ALIAS: Record<string, Category> = {
   model: 'Model Release', release: 'Model Release', models: 'Model Release',
@@ -86,6 +92,8 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const [style, setStyle] = useState<SkyStyle>('circle');
   const [language, setLanguage] = useState<Language>('all');
   const [category, setCategory] = useState<Category | null>(null);
+  // Default sky is US only; /region cn switches to the China sources.
+  const [region, setRegion] = useState<Region>('US');
   const [chronicle, setChronicle] = useState(false);
   const [chronicleMK, setChronicleMK] = useState(0);
   const [reelScale, setReelScale] = useState(1);
@@ -113,6 +121,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const styleRef = useRef(style); styleRef.current = style;
   const langRef = useRef(language); langRef.current = language;
   const catRef = useRef(category); catRef.current = category;
+  const regionRef = useRef(region); regionRef.current = region;
   const chronicleRef = useRef(chronicle); chronicleRef.current = chronicle;
   const chronicleMKRef = useRef(chronicleMK); chronicleMKRef.current = chronicleMK;
   const boundsRef = useRef({ minMK, maxMK }); boundsRef.current = { minMK, maxMK };
@@ -283,6 +292,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const chronMK = chronicleMKRef.current;
       const lang = langRef.current;
       const cat = catRef.current;
+      const reg = regionRef.current;
       const readSet = readSetRef.current;
 
       raycaster.setFromCamera(pointer, camera);
@@ -315,9 +325,10 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         const inMonth = !chron || d.monthKey === chronMK;
         const langOK = lang === 'all' || (lang === 'chinese' ? d.isChinese : !d.isChinese);
         const catOK = !cat || d.item.category === cat;
+        const regionOK = d.item.region === reg;
         const searchOK = !filt || d.item.title.toLowerCase().includes(filt) || d.item.source.toLowerCase().includes(filt);
         let dimTarget = 1;
-        if (!inMonth || !langOK || !catOK) dimTarget = 0;
+        if (!inMonth || !langOK || !catOK || !regionOK) dimTarget = 0;
         else if (!searchOK) dimTarget = 0.05;
         d.dim += (dimTarget - d.dim) * 0.08;
 
@@ -388,6 +399,9 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         if (arg === 'off' || arg === 'all' || arg === 'clear') { setCategory(null); close(); }
         else if (CAT_ALIAS[arg]) { setCategory(CAT_ALIAS[arg]); close(); }
         else setCmdFeedback('topics: model · funding · regulation · research · infra · product · opinion · all');
+      } else if (cmd === 'region' || cmd === 'origin') {
+        if (REGION_ALIAS[arg]) { setRegion(REGION_ALIAS[arg]); close(); }
+        else setCmdFeedback('usage: /region us · cn');
       } else if (cmd === 'language' || cmd === 'lang') {
         if (arg === 'en' || arg === 'english') { setLanguage('english'); close(); }
         else if (arg === 'cn' || arg === 'zh' || arg === 'chinese' || arg === '中文') { setLanguage('chinese'); close(); }
@@ -412,7 +426,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       } else if (cmd === 'help' || cmd === '?') {
         setHelpOpen(true); close();
       } else if (cmd === 'clear') {
-        setFilter(''); setMotion('normal'); setChronicle(false); setLanguage('all'); setCategory(null); setCard(null); close();
+        setFilter(''); setMotion('normal'); setChronicle(false); setLanguage('all'); setCategory(null); setRegion('US'); setCard(null); close();
       } else if (cmd === 'list') {
         router.push('/list');
       } else {
@@ -441,6 +455,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   if (chronicle) statusLine = `CHRONICLE · ${mkShort(chronicleMK)} · TAP A MONTH OR SCROLL · /clear TO EXIT`;
   else {
     const parts: string[] = [];
+    if (region !== 'US') parts.push('REGION: ' + region); // default sky is US — only flag the switch
     if (filter) parts.push('SEARCH: ' + filter.toUpperCase());
     if (category) parts.push('TOPIC: ' + category.toUpperCase());
     if (language !== 'all') parts.push('LANG: ' + language.toUpperCase());
