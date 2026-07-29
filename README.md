@@ -58,4 +58,4 @@ Public feed (/, /category, /source, /article) reads the ranked `feed_articles` v
 Admin (/admin) manages sources, overrides grades, and shows ingestion health.
 ```
 
-See [`architecture.md`](architecture.md) for the full design and [`CHANGELOG.md`](CHANGELOG.md) for status/roadmap.
+See [`architecture.md`](architecture.md) for the full design and [`CHANGELOG.md`](CHANGELOG.md) for status & plan.

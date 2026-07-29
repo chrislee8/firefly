@@ -35,6 +35,9 @@ yarn-error.log*
 # ...but keep the (secret-free) template tracked
 !.env.local.example
 
+# private strategy doc — business/positioning decisions, not for the public repo
+roadmap.md
+
 # vercel
 .vercel
 
