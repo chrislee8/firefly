@@ -67,69 +67,17 @@
 
 ---
 
-## Next up — firefly-in-a-jar on article open (TODO)
-When you click a firefly to read an article, capture it in a little glass jar:
-- [ ] Small SVG/CSS **jar** appears (near the card) with the article's rank-colored firefly glowing/pulsing inside
-- [ ] Gentle animation — firefly drifts and blinks within the jar; releasing (close) lets it fly back
-- [ ] Decide accent treatment on open (green vs black vs the jar itself) once we see the jar in place
+## Dropped — not pursuing (kept crossed-out so they don't get re-proposed)
+- ~~firefly-in-a-jar animation on article open~~ — built it, didn't look good.
+- ~~Full-text search via Postgres `tsvector`~~ — already covered by the `/search` keyword filter in the night sky; not needed at this scale.
+- ~~Accounts & personalization (public auth, bookmarks, followed sources)~~ — firefly is a single-admin personal reader, not a multi-tenant product; personalization doesn't fit.
+- ~~Distribution (public JSON API, daily digest email, secondary X/Reddit sources)~~ — no use case.
 
-## Phase 2 — Search & corroboration (optional)
-- [ ] Fuzzy title dedup across outlets → `article_source_links` + "also covered by"
-- [ ] Full-text search via Postgres `tsvector`
-
-## Phase 3 — Accounts & personalization (optional)
-- [ ] Public Supabase Auth, saved/bookmarked articles, followed sources/categories
-
-## Phase 4 — Distribution (optional)
-- [ ] Public read-only JSON API (rate-limited)
-- [ ] Daily digest email; secondary signal sources (X / Reddit) as a lower-weight tier
+## Parked (optional, low priority)
+- Fuzzy title dedup across outlets → "also covered by" corroboration (distinct from keyword search — dedupes the *same* story across outlets).
 
 ---
 
-# Firefly v2 — Fine-tuned grader (planned)
+## v2 — fine-tuned grader → moved to the `finetune` repo
 
-Replace the Gemini Flash grading call with a small open-weight model we fine-tune ourselves,
-serve locally, and validate with an evaluation harness — a $0, no-rate-limit, self-owned
-grader. Technical overview → [`architecture.md`](architecture.md).
-
-**Key facts:** base = `Qwen2.5-3B-Instruct` → LoRA via **MLX** (M1 Max) → served on **Ollama**
-as `firefly-grader`. Ollama *serves*; MLX *trains*. Training data already exists in the `grades`
-table (`raw_model_output` = targets, `is_manual_override=true` = gold labels). The swap is behind
-a `GRADER_PROVIDER` env switch (`gemini | openai-ft | local`); Gemini stays as fallback,
-promotion is **eval-gated** and one-env-var reversible.
-
-## Milestone 0 — Data export
-- [ ] Decide export language (Python rec.) + folder (`finetune/export/`)
-- [ ] Connect to Supabase (service-role key from env; mirror `src/lib/supabase/server.ts`)
-- [ ] Query `feed_articles` + `grades` (need `is_manual_override`, `raw_model_output`)
-- [ ] Shape rows into chat JSONL (system = `SYSTEM_INSTRUCTION`, user = article, assistant = grade)
-- [ ] Split: de-dupe by `canonical_url`; all overrides → **test**; time-split the rest (~300 test, ~10% val)
-- [ ] Write `train/val/test.jsonl` + a **data card** (counts, category balance)
-- [ ] Confirm how many `is_manual_override` rows exist (decides gold-set readiness vs. hand-labeling)
-
-## Milestone 1 — Eval harness on the baseline (build metrics FIRST)
-- [ ] `eval/run_eval.py` loads `test.jsonl`, runs a candidate, emits `scorecard.md`
-- [ ] Metrics: category acc / macro-F1, impact MAE, **NDCG@10 / MRR** (the decider), valid-JSON %, $/1k, ms/item
-- [ ] Score the **Gemini baseline** and an **un-tuned local** baseline (targets to beat)
-- [ ] Three-way rating vs. ground truth — not agreement-with-Gemini (see design §6.1)
-
-## Milestone 2 — Path B: open-weight LoRA (local)
-- [ ] Add `mlx-lm`; download `Qwen2.5-3B-Instruct`
-- [ ] `mlx_lm.lora` train on `train.jsonl`; tune rank / epochs / data size
-- [ ] `mlx_lm.fuse` → serve (`mlx_lm.server` or Ollama import via Modelfile)
-- [ ] Run the harness; iterate until it matches/beats the Gemini baseline
-
-## Milestone 3 — Path A: managed fine-tune (OpenAI)
-- [ ] Same JSONL → OpenAI fine-tuning job → `ft:` model id
-- [ ] Run the harness; compare Path A vs. Path B head-to-head in one scorecard
-
-## Milestone 4 — Wire into firefly (behind the switch)
-- [ ] `src/lib/grader/` provider interface (`GraderProvider`) — extract v1 Gemini path
-- [ ] Add `openai-ft` + `local` (Ollama OpenAI-compatible `/v1`) providers
-- [ ] `GRADER_PROVIDER` env switch; Gemini stays default fallback
-- [ ] Ship behind the flag; flip only if the scorecard says so
-
-## Milestone 5 — Production-ops writeups (optional)
-- [ ] Drift monitoring (grade distribution over time)
-- [ ] Rollback story (flip the env var) + eval-gated deploy policy
-- [ ] Latency / cost notes at cron volume
+The local fine-tuned model that will replace the Gemini grading call is built in the separate **`finetune`** project (its own repo). When it's ready, firefly gains a small provider swap (`GRADER_PROVIDER` env; Gemini stays the fallback). Nothing in this repo depends on it today.
