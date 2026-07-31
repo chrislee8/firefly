@@ -16,7 +16,10 @@ jobs:
     steps:
       - name: Ingest feeds
         run: |
-          curl --fail --silent --show-error --max-time 120 \
+          # --retry rides out transient blips (Gemini/DB/cold-start 5xx, timeouts)
+          # so a single hiccup doesn't red the whole run; a real outage still fails.
+          curl --fail --retry 3 --retry-delay 4 --retry-all-errors \
+            --silent --show-error --max-time 120 \
             -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
             "${{ secrets.SITE_URL }}/api/cron/ingest"
 
@@ -24,9 +27,11 @@ jobs:
         run: |
           # Each call grades one batch of 8 (well under Vercel's 60s cap).
           # Loop to drain more per cron cycle — the runner has no such limit.
+          # --retry absorbs a transient batch failure instead of failing the job.
           for i in 1 2 3 4 5 6 7 8; do
             echo "grade pass $i";
-            curl --fail --silent --show-error --max-time 90 \
+            curl --fail --retry 3 --retry-delay 4 --retry-all-errors \
+              --silent --show-error --max-time 90 \
               -H "x-cron-secret: ${{ secrets.CRON_SECRET }}" \
               "${{ secrets.SITE_URL }}/api/cron/grade" || exit 1;
           done
