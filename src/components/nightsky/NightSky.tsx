@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import type { Category, Region } from '@/lib/types';
 import type { FireflyItem } from '@/lib/nightsky';
 import { safeHref } from '@/lib/safe-url';
+import { draftTakeUrl } from '@/lib/dandelion';
 
 type Motion = 'slow' | 'normal' | 'more';
 type SkyStyle = 'circle' | 'firefly' | 'icon';
@@ -615,6 +616,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
             <span style={{ fontFamily: mono, fontSize: 10, color: 'rgba(242,240,230,0.4)', letterSpacing: '0.08em' }}>{card.source} · {card.time}</span>
             <a href={safeHref(card.url)} target="_blank" rel="noopener noreferrer" onClick={() => markRead(card.id)} style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.05em', color: read.has(card.id) ? READ : '#ffd23f', textDecoration: 'none' }}>{read.has(card.id) ? 'read ✓' : 'read →'}</a>
           </div>
+          <a href={draftTakeUrl(card.title, card.url)} target="_blank" rel="noopener noreferrer" title="Open Dandelion's New Idea page, pre-filled from this article" style={{ display: 'block', marginTop: 10, fontFamily: mono, fontSize: 11, letterSpacing: '0.05em', color: 'rgba(255,210,63,0.7)', textDecoration: 'none' }}>✎ draft a take</a>
         </div>
       )}
 

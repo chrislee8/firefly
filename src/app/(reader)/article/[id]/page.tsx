@@ -7,6 +7,7 @@ import { slugify } from '@/lib/slug';
 import { CategoryPill } from '@/components/CategoryPill';
 import { ScoreBadge } from '@/components/ScoreBadge';
 import { safeHref } from '@/lib/safe-url';
+import { draftTakeUrl } from '@/lib/dandelion';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +81,17 @@ export default async function ArticlePage({ params }: { params: Promise<{ id: st
         style={{ background: 'var(--surface)', borderColor: 'var(--glow-dim)', color: 'var(--glow)' }}
       >
         Read the full story at {hostOf(article.url)} ↗
+      </a>
+
+      <a
+        href={draftTakeUrl(article.title, article.url)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open Dandelion's New Idea page, pre-filled from this article"
+        className="ml-3 inline-flex items-center gap-2 rounded-lg border px-4 py-3 text-sm transition-colors hover:border-glow"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--muted)' }}
+      >
+        ✎ draft a take
       </a>
 
       <p className="text-xs" style={{ color: 'var(--muted)' }}>
