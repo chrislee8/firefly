@@ -1,5 +1,23 @@
 # Firefly — Changelog & Plan
 
+## Admin auth → Clerk (shared with Dandelion)
+
+Migrated `/admin` from Supabase Auth to **Clerk**, matching Dandelion so both apps
+share **one** Clerk application (one admin identity for both).
+
+- [x] Add `@clerk/nextjs`; `clerkMiddleware` in `src/proxy.ts` (conditional — pass-through when unconfigured)
+- [x] `lib/admin-auth.ts` (`isAdmin()`, `CLERK_CONFIGURED`) replaces `lib/auth.ts` (Supabase); all admin pages + `/api/admin/*` routes gate on it
+- [x] Generic "Permission denied" locked screen; real cause logged server-side only
+- [x] Removed Supabase-auth code: `lib/auth.ts`, `components/admin/LoginForm.tsx`, `lib/supabase/{ssr,browser}.ts`
+- [x] Builds green with **no** Clerk keys (public site unaffected; admin dev-only until keys set)
+
+**Owner action items (needs Chris — Clerk dashboard + secrets):**
+- [ ] In Clerk, pick ONE application to serve both apps (reuse Dandelion's if it exists). Copy its `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` + `CLERK_SECRET_KEY`.
+- [ ] Add both keys to Firefly's Vercel project env (Production + Preview) and to local `.env.local`. Add `www.chrislee8.com` (+ `localhost`) to the Clerk instance's allowed origins / paths.
+- [ ] Create the admin user in Clerk (Users → add) — that account is now the login for BOTH admins.
+- [ ] **Verify at runtime** that Clerk's `auth()` is detected via `proxy.ts` (Next 16's renamed middleware). If Clerk errors "cannot detect clerkMiddleware", rename `src/proxy.ts` → `src/middleware.ts` (same code) as a fallback.
+- [ ] Optional (single sign-on across both domains): configure Clerk multi-domain — primary + satellite for `dandelion.chrislee8.com` and `www.chrislee8.com`.
+
 ## Phase 1 — Build now ✅ (code complete, awaiting live credentials)
 
 ### Foundation

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/admin-auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { isUuid } from '@/lib/validate';
 import { CATEGORIES, type Category } from '@/lib/types';
@@ -20,7 +20,7 @@ function dbFailed(where: string, error: { message: string }) {
  *   { action: 'override', impactScore, category } → new manual-override grade
  */
 export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!(await isAdmin())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
 
   const { id } = await ctx.params;
   if (!isUuid(id)) return NextResponse.json({ error: 'invalid id' }, { status: 400 });

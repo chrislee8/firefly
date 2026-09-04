@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/admin-auth';
 import { runIngest } from '@/lib/ingest';
 import { runGrading } from '@/lib/grading';
 
@@ -9,7 +9,7 @@ export const maxDuration = 60;
 
 /** Manually trigger a job from the admin panel: POST { job: 'ingest' | 'grade' }. */
 export async function POST(req: NextRequest) {
-  if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!(await isAdmin())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
 
   try {

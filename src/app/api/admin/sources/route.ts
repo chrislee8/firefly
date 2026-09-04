@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/auth';
+import { isAdmin } from '@/lib/admin-auth';
 import { createServiceClient } from '@/lib/supabase/server';
 import { asBool, asHttpUrl, asText, asTier, asWeight, isUuid } from '@/lib/validate';
 
@@ -19,7 +19,7 @@ function dbFailed(where: string, error: { message: string }) {
 
 /** List every source (including inactive) for the admin registry. */
 export async function GET() {
-  if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!(await isAdmin())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const db = createServiceClient();
   const { data, error } = await db.from('sources').select('*').order('tier').order('name');
   if (error) return dbFailed('GET', error);
@@ -28,7 +28,7 @@ export async function GET() {
 
 /** Add a source. Body: { name, url, feed_url, tier, category_hint? } */
 export async function POST(req: NextRequest) {
-  if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!(await isAdmin())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   if (!body) return badRequest('invalid json');
 
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
 /** Update a source. Body: { id, is_active?, tier?, weight?, name?, url?, feed_url? } */
 export async function PATCH(req: NextRequest) {
-  if (!(await getUser())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  if (!(await isAdmin())) return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   const body = await req.json().catch(() => null);
   if (!body) return badRequest('invalid json');
   if (!isUuid(body.id)) return badRequest('a valid uuid id is required');

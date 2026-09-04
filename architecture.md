@@ -70,7 +70,7 @@ effective_score = impact_score * 0.5 ^ (hours_since_published / 72)
 
 ## Auth
 
-`src/proxy.ts` (Next 16 proxy convention, formerly middleware) refreshes the Supabase session cookie on `/admin` + `/api/admin` routes. `lib/auth.ts#getUser()` gates admin pages and write routes. Public site is fully unauthenticated.
+Admin auth is **Clerk** (shared with Dandelion — one Clerk application, same keys in both apps, so a single identity gates both). `src/proxy.ts` (Next 16 proxy convention, formerly middleware) runs `clerkMiddleware`; anonymous visitors to `/admin` pages are redirected to Clerk's hosted sign-in. `lib/admin-auth.ts#isAdmin()` is the real, resource-based gate on every admin page and write route (`/api/admin/*` returns 401 rather than redirect). When Clerk keys are absent the proxy is a pass-through and `isAdmin()` allows access **only** in local dev — so the admin is previewable while unconfigured but can never ship unprotected (production shows a generic "Permission denied", with the real cause logged server-side). Public site is fully unauthenticated and never touches Clerk.
 
 ## Cost posture
 
