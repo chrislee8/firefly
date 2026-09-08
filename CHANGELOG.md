@@ -1,10 +1,11 @@
 # Firefly — Changelog & Plan
 
-## UX — night-sky card title is a link again
+## UX — night-sky card title is the article link
 
-- [x] The popup card's article title is now a clickable link to the source (new
-  tab, marks-as-read), same destination as "read →" — no longer plain text that
-  forces you to hunt for the read arrow. "✎ draft a take" is unchanged.
+- [x] The popup card's article title is now the clickable link to the source (new
+  tab, marks-as-read). Removed the separate "read →" action (redundant now that
+  the title links). Read-state still shown by the colored dot. "✎ draft a take"
+  unchanged.
 
 ## Admin auth → Clerk (shared with Dandelion)
 
