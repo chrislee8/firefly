@@ -6,6 +6,9 @@
   tab, marks-as-read). Removed the separate "read →" action (redundant now that
   the title links). Read-state still shown by the colored dot. "✎ draft a take"
   unchanged.
+- [x] Hover tooltip now shows the rank: `#<rank> · <title>` (was title only), so
+  you can scan which firefly is #1 without clicking. Rank also still on the click
+  card and encoded in firefly size/brightness.
 
 ## Admin auth → Clerk (shared with Dandelion)
 

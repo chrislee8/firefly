@@ -342,7 +342,12 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       if (next !== hovered) {
         hovered = next;
         renderer.domElement.style.cursor = next ? 'pointer' : 'default';
-        setHoverTitle(next ? (next.userData as { item: FireflyItem }).item.title : null);
+        if (next) {
+          const it = (next.userData as { item: FireflyItem }).item;
+          setHoverTitle(`#${it.rank} · ${it.title}`);
+        } else {
+          setHoverTitle(null);
+        }
       }
       if (hovered && tipRef.current) {
         const p = toScreen(hovered.position);
