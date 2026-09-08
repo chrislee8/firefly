@@ -1,5 +1,11 @@
 # Firefly — Changelog & Plan
 
+## UX — night-sky card title is a link again
+
+- [x] The popup card's article title is now a clickable link to the source (new
+  tab, marks-as-read), same destination as "read →" — no longer plain text that
+  forces you to hunt for the read arrow. "✎ draft a take" is unchanged.
+
 ## Admin auth → Clerk (shared with Dandelion)
 
 Migrated `/admin` from Supabase Auth to **Clerk**, matching Dandelion so both apps

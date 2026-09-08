@@ -611,7 +611,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
             </div>
             <button onClick={() => setCard(null)} aria-label="Close" style={{ cursor: 'pointer', color: 'rgba(242,240,230,0.4)', fontSize: 14, lineHeight: 1, padding: '2px 4px', background: 'none', border: 'none' }}>✕</button>
           </div>
-          <div style={{ color: '#f2f0e6', fontSize: 15, fontWeight: 500, lineHeight: 1.4, marginBottom: 10 }}>{card.title}</div>
+          <a href={safeHref(card.url)} target="_blank" rel="noopener noreferrer" onClick={() => markRead(card.id)} title="Read the article" style={{ display: 'block', color: '#f2f0e6', fontSize: 15, fontWeight: 500, lineHeight: 1.4, marginBottom: 10, textDecoration: 'none', cursor: 'pointer' }}>{card.title}</a>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontFamily: mono, fontSize: 10, color: 'rgba(242,240,230,0.4)', letterSpacing: '0.08em' }}>{card.source} · {card.time}</span>
             <a href={safeHref(card.url)} target="_blank" rel="noopener noreferrer" onClick={() => markRead(card.id)} style={{ fontFamily: mono, fontSize: 11, letterSpacing: '0.05em', color: read.has(card.id) ? READ : '#ffd23f', textDecoration: 'none' }}>{read.has(card.id) ? 'read ✓' : 'read →'}</a>
