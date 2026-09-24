@@ -41,7 +41,6 @@ const COMMANDS: CmdInfo[] = [
   { name: 'language', token: '/language', desc: 'english · chinese · all', fill: true },
   { name: 'style', token: '/style', desc: 'firefly · circle · icon', fill: true },
   { name: 'motion', token: '/motion', desc: 'drift speed: slow · normal · more', fill: true },
-  { name: 'chronicle', token: '/chronicle', desc: 'time-travel by month' },
   { name: 'list', token: '/motion -l', desc: 'switch to the classic list' },
   { name: 'clear', token: '/clear', desc: 'reset filters & modes' },
   { name: 'help', token: '/help', desc: 'show all commands with descriptions' },
@@ -74,6 +73,17 @@ function mkShort(mk: number): string {
   const m = ((mk % 12) + 12) % 12;
   return `${String(m + 1).padStart(2, '0')}.${String(y % 100).padStart(2, '0')}`;
 }
+/** 'YYYY-MM' → month key (year*12 + 0-based month). */
+function mkOfMonth(month: string): number {
+  const [y, m] = month.split('-').map(Number);
+  return y * 12 + (m - 1);
+}
+/** month key → 'YYYY-MM' (for the ?month= URL). */
+function monthOfMK(mk: number): string {
+  const y = Math.floor(mk / 12);
+  const m = ((mk % 12) + 12) % 12;
+  return `${y}-${String(m + 1).padStart(2, '0')}`;
+}
 const hasCJK = (s: string) => /[㐀-鿿豈-﫿]/.test(s);
 
 // World-unit inset so drift + a sprite's own radius can't carry it back over
@@ -82,7 +92,15 @@ const hasCJK = (s: string) => /[㐀-鿿豈-﫿]/.test(s);
 // minimum. 2.6 leaves slack.
 const FIT_PAD = 2.6;
 
-export function NightSky({ items }: { items: FireflyItem[] }) {
+export function NightSky({
+  items,
+  monthRange,
+  selectedMonth,
+}: {
+  items: FireflyItem[];
+  monthRange?: { min: string; max: string };
+  selectedMonth?: string;
+}) {
   const router = useRouter();
   const mountRef = useRef<HTMLDivElement>(null);
   const cmdRef = useRef<HTMLInputElement>(null);
@@ -101,15 +119,16 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const [category, setCategory] = useState<Category | null>(null);
   // Default sky is US only; /region cn switches to the China sources.
   const [region, setRegion] = useState<Region>('US');
-  const [chronicle, setChronicle] = useState(false);
-  const [chronicleMK, setChronicleMK] = useState(0);
   const [reelScale, setReelScale] = useState(1);
   const [reelHover, setReelHover] = useState(false);
   const reelBarRef = useRef<HTMLDivElement>(null);
   const [read, setRead] = useState<Set<string>>(new Set());
   const [isTouch, setIsTouch] = useState(false);
 
+  // Reel bounds come from the DB month range (so it spans months not currently
+  // loaded); fall back to the loaded items' range if the range wasn't fetched.
   const { minMK, maxMK } = useMemo(() => {
+    if (monthRange) return { minMK: mkOfMonth(monthRange.min), maxMK: mkOfMonth(monthRange.max) };
     let mn = Infinity;
     let mx = -Infinity;
     for (const it of items) {
@@ -118,7 +137,9 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       if (mk > mx) mx = mk;
     }
     return items.length ? { minMK: mn, maxMK: mx } : { minMK: 0, maxMK: 0 };
-  }, [items]);
+  }, [monthRange, items]);
+  // The month currently shown (from the ?month= URL); defaults to the latest.
+  const focusMK = selectedMonth ? mkOfMonth(selectedMonth) : maxMK;
 
   // Mirrors for the imperative loop.
   const motionRef = useRef(motion); motionRef.current = motion;
@@ -129,23 +150,16 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
   const langRef = useRef(language); langRef.current = language;
   const catRef = useRef(category); catRef.current = category;
   const regionRef = useRef(region); regionRef.current = region;
-  const chronicleRef = useRef(chronicle); chronicleRef.current = chronicle;
-  const chronicleMKRef = useRef(chronicleMK); chronicleMKRef.current = chronicleMK;
-  const boundsRef = useRef({ minMK, maxMK }); boundsRef.current = { minMK, maxMK };
+  const navRef = useRef({ minMK, maxMK, focusMK }); navRef.current = { minMK, maxMK, focusMK };
   const apiRef = useRef<{ flies: THREE.Sprite[]; tex: Record<SkyStyle, THREE.Texture> } | null>(null);
 
-  const stepChronicle = useCallback((dir: number) => {
-    setChronicleMK((prev) => {
-      const { minMK: lo, maxMK: hi } = boundsRef.current;
-      return Math.min(hi, Math.max(lo, prev + dir));
-    });
-  }, []);
-  const selectMonth = useCallback((mk: number) => {
-    const { minMK: lo, maxMK: hi } = boundsRef.current;
-    if (mk < lo || mk > hi) return;
-    setChronicle(true);
-    setChronicleMK(mk);
-  }, []);
+  // Navigate to a month by changing the URL — the server reloads that month's
+  // sky. The latest month is the default "now" view (clean `/` URL).
+  const goToMonth = useCallback((mk: number) => {
+    const { minMK: lo, maxMK: hi } = navRef.current;
+    const t = Math.min(hi, Math.max(lo, mk));
+    router.push(t >= hi ? '/' : `/?month=${monthOfMK(t)}`);
+  }, [router]);
   const markRead = useCallback((id: string) => {
     setRead((prev) => {
       if (prev.has(id)) return prev;
@@ -303,11 +317,12 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
 
     let lastWheel = 0;
     const onWheel = (e: WheelEvent) => {
-      if (!chronicleRef.current) return;
       const now = performance.now();
       if (now - lastWheel < 220 || Math.abs(e.deltaY) < 6) return;
+      const { minMK: lo, maxMK: hi, focusMK: cur } = navRef.current;
+      if (lo >= hi) return; // only one month of data — nothing to scroll to
       lastWheel = now;
-      stepChronicle(e.deltaY > 0 ? -1 : 1);
+      goToMonth(cur + (e.deltaY > 0 ? -1 : 1)); // scroll down = older month
     };
     window.addEventListener('wheel', onWheel, { passive: true });
 
@@ -326,8 +341,6 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       const t = clock.getElapsedTime();
       const m = motionFactor(motionRef.current);
       const filt = filterRef.current.toLowerCase();
-      const chron = chronicleRef.current;
-      const chronMK = chronicleMKRef.current;
       const lang = langRef.current;
       const cat = catRef.current;
       const reg = regionRef.current;
@@ -365,13 +378,12 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         sp.material.color.copy(
           readSet.has(d.item.id) ? READ_COLOR : d.item.minutesAgo < 1440 ? FRESH_COLOR : d.baseColor
         );
-        const inMonth = !chron || d.monthKey === chronMK;
         const langOK = lang === 'all' || (lang === 'chinese' ? d.isChinese : !d.isChinese);
         const catOK = !cat || d.item.category === cat;
         const regionOK = d.item.region === reg;
         const searchOK = !filt || d.item.title.toLowerCase().includes(filt) || d.item.source.toLowerCase().includes(filt);
         let dimTarget = 1;
-        if (!inMonth || !langOK || !catOK || !regionOK) dimTarget = 0;
+        if (!langOK || !catOK || !regionOK) dimTarget = 0;
         else if (!searchOK) dimTarget = 0.05;
         d.dim += (dimTarget - d.dim) * 0.08;
 
@@ -410,7 +422,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
       renderer.dispose();
       if (renderer.domElement.parentNode) renderer.domElement.parentNode.removeChild(renderer.domElement);
     };
-  }, [items, stepChronicle]);
+  }, [items, goToMonth]);
 
   // swap textures on /style
   useEffect(() => {
@@ -452,7 +464,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         else setCmdFeedback('usage: /language english · chinese · all');
       } else if (cmd === 'motion') {
         if (arg === '-l' || arg === 'list') return router.push('/list');
-        if (arg === '-a' || arg === 'anim' || arg === 'animated' || arg === '') { setMotion('normal'); setChronicle(false); close(); return; }
+        if (arg === '-a' || arg === 'anim' || arg === 'animated' || arg === '') { setMotion('normal'); close(); return; }
         const map: Record<string, Motion> = { slow: 'slow', calm: 'slow', more: 'more', normal: 'normal', reset: 'normal' };
         if (map[arg]) { setMotion(map[arg]); close(); }
         else setCmdFeedback('usage: /motion slow · normal · more · -l (list)');
@@ -463,13 +475,11 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
         else if (arg === 'icon' || arg === 'star') { setStyle('icon'); close(); }
         else if (arg === '') { setStyle((s) => order[(order.indexOf(s) + 1) % order.length]); close(); }
         else setCmdFeedback('usage: /style firefly · circle · icon');
-      } else if (cmd === 'chronicle' || cmd === 'chron' || cmd === 'time') {
-        if (arg === 'off') { setChronicle(false); close(); }
-        else { setChronicle((on) => { if (!on) setChronicleMK(boundsRef.current.maxMK); return !on; }); close(); }
       } else if (cmd === 'help' || cmd === '?') {
         setHelpOpen(true); close();
       } else if (cmd === 'clear') {
-        setFilter(''); setMotion('normal'); setChronicle(false); setLanguage('all'); setCategory(null); setRegion('US'); setCard(null); close();
+        setFilter(''); setMotion('normal'); setLanguage('all'); setCategory(null); setRegion('US'); setCard(null); close();
+        if (focusMK !== maxMK) router.push('/'); // back to the latest month
       } else if (cmd === 'list') {
         router.push('/list');
       } else {
@@ -495,7 +505,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
 
   // status line
   let statusLine = '';
-  if (chronicle) statusLine = `CHRONICLE · ${mkShort(chronicleMK)} · TAP A MONTH OR SCROLL · /clear TO EXIT`;
+  if (focusMK !== maxMK) statusLine = `VIEWING ${mkShort(focusMK)} · SCROLL OR TAP A MONTH · /clear FOR LATEST`;
   else {
     const parts: string[] = [];
     if (region !== 'US') parts.push('REGION: ' + region); // default sky is US — only flag the switch
@@ -518,8 +528,14 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
     else runCommand(c.name);
   };
 
-  const focusMK = chronicle ? chronicleMK : maxMK;
-  const reelMonths = items.length ? [-2, -1, 0, 1, 2].map((o) => focusMK + o) : [];
+  // Window of months around the focus, clamped to the real data range — never
+  // shows future months, and never months with no data.
+  const reelMonths: number[] = [];
+  if (maxMK >= minMK && (items.length || monthRange)) {
+    for (let mk = focusMK - 2; mk <= focusMK + 2; mk++) {
+      if (mk >= minMK && mk <= maxMK) reelMonths.push(mk);
+    }
+  }
 
   // vertical bar → adjust the reel font size (0.6×–1.8×)
   const startReelResize = (e: { clientY: number }) => {
@@ -579,7 +595,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
               return (
                 <div
                   key={mk}
-                  onClick={() => selectMonth(mk)}
+                  onClick={() => goToMonth(mk)}
                   style={{
                     cursor: inRange ? 'pointer' : 'default',
                     fontSize: (isFocus ? 40 : 34 - dist * 4) * reelScale,
@@ -587,7 +603,7 @@ export function NightSky({ items }: { items: FireflyItem[] }) {
                     lineHeight: 1.0,
                     letterSpacing: '0.16em',
                     color: `rgba(242,240,230,${Math.max(0.1, 0.34 - dist * 0.07)})`,
-                    textShadow: isFocus && chronicle ? '0 0 20px rgba(255,210,63,0.28)' : 'none',
+                    textShadow: isFocus ? '0 0 20px rgba(255,210,63,0.28)' : 'none',
                     transition: 'color 0.25s',
                   }}
                 >

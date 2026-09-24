@@ -1,5 +1,20 @@
 # Firefly — Changelog & Plan
 
+## Rework — month reel loads real months on demand
+
+- [x] The night sky now **loads one month at a time**. `/?month=YYYY-MM` fetches
+  that month's top articles (ranked by `impact_score` — recency decay is
+  meaningless inside a past month); the default `/` is the latest month, still
+  recency-ranked (`effective_score`).
+- [x] Reel is driven by a **DB month range** (`getSkyMonthRange`), not the loaded
+  items — so it spans months not currently on screen. Walks back from the latest
+  month while each has real content (≥30 articles), which **drops outlier dates**
+  (some feeds report years-old timestamps, back to 2015).
+- [x] Reel shows only real months — **no future months**, no empty ones. Scroll or
+  tap a month → navigates + reloads that month.
+- [x] Removed the old client-side `chronicle` filter/toggle (data is now per-month)
+  and the `/chronicle` command; the reel is the time-travel control.
+
 ## Fix — decode HTML entities in titles/summaries
 
 - [x] Feed titles carried raw HTML entities from RSS (e.g. `Anthropic&#8217;s`),
