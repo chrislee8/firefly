@@ -7,6 +7,7 @@ import type { Category, Region } from '@/lib/types';
 import type { FireflyItem } from '@/lib/nightsky';
 import { safeHref } from '@/lib/safe-url';
 import { draftTakeUrl } from '@/lib/dandelion';
+import { FireflyMark } from '@/components/FireflyMark';
 
 type Motion = 'slow' | 'normal' | 'more';
 type SkyStyle = 'circle' | 'firefly' | 'icon';
@@ -562,7 +563,9 @@ export function NightSky({
 
       {/* Logo */}
       <div style={{ position: 'absolute', top: 28, left: 32, display: 'flex', alignItems: 'center', gap: 12, pointerEvents: 'none', userSelect: 'none' }}>
-        <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ffd23f', boxShadow: '0 0 12px 3px rgba(255,210,63,0.7)', animation: 'blink 3.2s ease-in-out infinite' }} />
+        <div style={{ display: 'flex', animation: 'blink 3.2s ease-in-out infinite' }}>
+          <FireflyMark size={30} />
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <div style={{ color: '#f2f0e6', fontSize: 17, fontWeight: 700, letterSpacing: '0.14em' }}>FIREFLY</div>
           <div style={{ color: 'rgba(242,240,230,0.4)', fontSize: 10, letterSpacing: '0.3em', fontWeight: 400 }}>AI NEWS</div>

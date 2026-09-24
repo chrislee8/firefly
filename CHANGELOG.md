@@ -1,5 +1,11 @@
 # Firefly — Changelog & Plan
 
+## UX — night-sky logo is the firefly mark
+
+- [x] The top-left logo mark is now the **firefly** (the exact favicon art, via a
+  shared `FireflyMark` component) instead of a plain dot. It's fixed — it does
+  **not** change with the `/style` toggle (which only restyles the sky sprites).
+
 ## Rework — month reel loads real months on demand
 
 - [x] The night sky now **loads one month at a time**. `/?month=YYYY-MM` fetches
