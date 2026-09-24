@@ -7,9 +7,11 @@
   meaningless inside a past month); the default `/` is the latest month, still
   recency-ranked (`effective_score`).
 - [x] Reel is driven by a **DB month range** (`getSkyMonthRange`), not the loaded
-  items — so it spans months not currently on screen. Walks back from the latest
-  month while each has real content (≥30 articles), which **drops outlier dates**
-  (some feeds report years-old timestamps, back to 2015).
+  items — so it spans months not currently on screen. `min` = the month we first
+  ingested (`created_at`), `max` = latest news month (capped at the current month).
+  Keying `min` off ingest time (not `published_at`) means **months before we
+  launched never appear**, even though some feeds carry years-old original publish
+  dates. Nothing hard-coded — bounds come straight from the data.
 - [x] Reel shows only real months — **no future months**, no empty ones. Scroll or
   tap a month → navigates + reloads that month.
 - [x] Removed the old client-side `chronicle` filter/toggle (data is now per-month)

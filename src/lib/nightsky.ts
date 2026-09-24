@@ -90,53 +90,38 @@ const cachedSkyItems = unstable_cache(fetchSkyItems, ['nightsky-items-v3'], {
   tags: ['feed'],
 });
 
-/** Latest month back to the earliest month with real content — drives the reel. */
+/** The months Firefly has been collecting news — drives the reel. */
 export interface SkyMonthRange {
   min: string;
   max: string;
 }
-function mkOfMonthStr(m: string): number {
-  const [y, mo] = m.split('-').map(Number);
-  return y * 12 + (mo - 1);
-}
-function monthStr(mk: number): string {
-  const y = Math.floor(mk / 12);
-  const m = ((mk % 12) + 12) % 12;
-  return `${y}-${String(m + 1).padStart(2, '0')}`;
-}
-// A month needs at least this many articles to be worth a "sky" — filters out
-// the stray outlier dates (some feeds report years-old timestamps).
-const MONTH_MIN_ARTICLES = 30;
-const MONTH_MAX_LOOKBACK = 18;
 
+/**
+ * Range = the month we first ingested (`created_at`) → the latest news month
+ * (`published_at`, capped at the current month).
+ *
+ * Keying `min` off `created_at` — when a row entered our DB — rather than
+ * `published_at` means months *before we launched* never appear, even though a
+ * few feeds carry years-old original publish dates. Nothing is hard-coded: the
+ * bounds come straight from the data.
+ */
 async function fetchMonthRange(): Promise<SkyMonthRange | null> {
   const db = createPublicClient();
-  const hi = await db
-    .from('feed_articles')
-    .select('published_at')
-    .order('published_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const maxIso = hi.data?.published_at as string | undefined;
-  if (!maxIso) return null;
-  const max = toMonth(maxIso);
-  const maxMk = mkOfMonthStr(max);
+  const [firstIngest, lastNews] = await Promise.all([
+    db.from('feed_articles').select('created_at').order('created_at', { ascending: true }).limit(1).maybeSingle(),
+    db.from('feed_articles').select('published_at').order('published_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const createdIso = firstIngest.data?.created_at as string | undefined;
+  const publishedIso = lastNews.data?.published_at as string | undefined;
+  if (!createdIso || !publishedIso) return null;
 
-  // Walk back month by month while each still has real content; stop at the
-  // first sparse month so outlier years (2015 etc.) never enter the range.
-  let min = max;
-  for (let back = 1; back <= MONTH_MAX_LOOKBACK; back++) {
-    const m = monthStr(maxMk - back);
-    const { start, end } = monthBounds(m);
-    const { count } = await db
-      .from('feed_articles')
-      .select('id', { count: 'exact', head: true })
-      .gte('published_at', start)
-      .lt('published_at', end);
-    if ((count ?? 0) < MONTH_MIN_ARTICLES) break;
-    min = m;
-  }
-  return { min, max };
+  const min = toMonth(createdIso);
+  // Cap at the current month so a stray future-dated feed item can't extend it.
+  const nowMonth = toMonth(new Date().toISOString());
+  const published = toMonth(publishedIso);
+  const max = published <= nowMonth ? published : nowMonth;
+
+  return { min: min <= max ? min : max, max };
 }
 const cachedMonthRange = unstable_cache(fetchMonthRange, ['nightsky-month-range'], { revalidate: 300, tags: ['feed'] });
 
