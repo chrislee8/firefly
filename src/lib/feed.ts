@@ -1,7 +1,17 @@
 import { unstable_cache } from 'next/cache';
 import { createPublicClient } from '@/lib/supabase/server';
 import { slugify } from '@/lib/slug';
+import { decodeEntities } from '@/lib/format';
 import type { FeedArticle, Source } from '@/lib/types';
+
+/** Decode HTML entities in the human-readable fields (titles carry `&#8217;` etc). */
+function cleanArticle(a: FeedArticle): FeedArticle {
+  return {
+    ...a,
+    title: decodeEntities(a.title),
+    ai_summary: a.ai_summary ? decodeEntities(a.ai_summary) : a.ai_summary,
+  };
+}
 
 export const PAGE_SIZE = 24;
 export type SortMode = 'top' | 'latest';
@@ -37,7 +47,7 @@ async function fetchFeed(q: FeedQuery): Promise<FeedPage> {
   const { data, error } = await query.range(from, to);
   if (error) throw new Error(error.message);
 
-  const rows = (data ?? []) as FeedArticle[];
+  const rows = ((data ?? []) as FeedArticle[]).map(cleanArticle);
   const hasMore = rows.length > PAGE_SIZE;
   return { items: rows.slice(0, PAGE_SIZE), page, hasMore };
 }
@@ -68,7 +78,7 @@ export async function getArticle(id: string): Promise<FeedArticle | null> {
       .eq('id', id)
       .maybeSingle();
     if (error) throw new Error(error.message);
-    return (data as FeedArticle) ?? null;
+    return data ? cleanArticle(data as FeedArticle) : null;
   } catch {
     return null;
   }

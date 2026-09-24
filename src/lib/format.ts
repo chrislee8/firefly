@@ -22,3 +22,38 @@ export function hostOf(url: string): string {
     return url;
   }
 }
+
+// Named entities that show up in RSS titles; numeric refs are handled generically.
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”',
+  ndash: '–', mdash: '—', hellip: '…',
+};
+
+function fromCode(n: number): string {
+  try {
+    return Number.isFinite(n) && n > 0 ? String.fromCodePoint(n) : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Decode HTML entities in text pulled from feeds — titles routinely carry
+ * `&#8217;`, `&amp;`, `&#x2019;`, etc., which React would otherwise print
+ * literally. A few passes so double-encoded values (`&amp;#8217;`) also resolve.
+ * A string with no `&` is returned unchanged.
+ */
+export function decodeEntities(input: string): string {
+  if (!input || !input.includes('&')) return input;
+  let out = input;
+  for (let pass = 0; pass < 3 && out.includes('&'); pass++) {
+    const next = out
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => fromCode(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, dec) => fromCode(parseInt(dec, 10)))
+      .replace(/&([a-zA-Z][a-zA-Z0-9]*);/g, (m, name) => NAMED_ENTITIES[name] ?? NAMED_ENTITIES[name.toLowerCase()] ?? m);
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}

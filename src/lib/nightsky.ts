@@ -1,5 +1,6 @@
 import { unstable_cache } from 'next/cache';
 import { createPublicClient } from '@/lib/supabase/server';
+import { decodeEntities } from '@/lib/format';
 import type { Category, Region } from '@/lib/types';
 
 /** One firefly = one ranked article. `rank` 1 = highest (drives color/size/depth). */
@@ -38,7 +39,7 @@ async function fetchRegion(region: Region, now: number): Promise<FireflyItem[]> 
   // #1 firefly — a global rank would render a filtered sky with no bright star.
   return (data ?? []).map((row, i) => ({
     id: row.id as string,
-    title: row.title as string,
+    title: decodeEntities(row.title as string),
     source: row.source_name as string,
     region: row.source_region as Region,
     minutesAgo: Math.max(1, Math.round((now - new Date(row.published_at as string).getTime()) / 60000)),

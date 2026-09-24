@@ -1,5 +1,13 @@
 # Firefly — Changelog & Plan
 
+## Fix — decode HTML entities in titles/summaries
+
+- [x] Feed titles carried raw HTML entities from RSS (e.g. `Anthropic&#8217;s`),
+  which React printed literally. Added `decodeEntities()` and apply it at the read
+  layer (`lib/nightsky.ts`, `lib/feed.ts`) so every surface — night-sky card + hover,
+  list, article page — shows real characters. Handles numeric/hex/named refs and
+  double-encoding; no DB backfill needed (decoded at read).
+
 ## UX — night-sky card title is the article link
 
 - [x] The popup card's article title is now the clickable link to the source (new
