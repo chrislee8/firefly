@@ -4,12 +4,11 @@
 
 - [x] Added `metadataBase` + Open Graph + Twitter (`summary_large_image`) metadata
   (were missing entirely — shared links had no preview).
-- [x] **Site-wide OG image** (`opengraph-image.tsx`, `next/og`): a 1200×630 night
-  sky — a seeded scatter of glowing fireflies (the app's gold→orange→red palette)
-  behind the firefly mark + wordmark + tagline.
-- [x] **Per-article OG image**: headline (auto-sized), category, source, and score
-  badge over the same ambient sky, so sharing a specific story gets a rich card.
-- [x] Shared `lib/og-firefly.tsx` (firefly data-URI + `fireflyField()`).
+- [x] **One OG image for every link** (`opengraph-image.tsx`, `next/og`): a 1200×630
+  night sky — a seeded scatter of glowing fireflies (the app's gold→orange→red
+  palette) behind the firefly mark + wordmark + tagline, matching the homepage.
+  Article/category/source pages all inherit it (no per-article variant).
+- [x] Firefly data-URI + `fireflyField()` in `lib/og-firefly.tsx`.
 
 ## UX — night-sky logo is the firefly mark
 
