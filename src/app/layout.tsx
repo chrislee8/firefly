@@ -25,10 +25,27 @@ const reel = Barlow_Condensed({
 const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 const GTM_ID = process.env.NEXT_PUBLIC_GTM_ID;
 
+const SITE_URL = 'https://www.chrislee8.com';
+const DESCRIPTION =
+  'An ambient, ranked feed of AI-industry news from primary labs, credible reporting, and research — scored by significance, not just recency.';
+
 export const metadata: Metadata = {
+  // Makes the generated opengraph-image URLs absolute (required for link previews).
+  metadataBase: new URL(SITE_URL),
   title: 'Firefly — AI news, ranked by what matters',
-  description:
-    'An ambient, ranked feed of AI-industry news from primary labs, credible reporting, and research — scored by significance, not just recency.',
+  description: DESCRIPTION,
+  openGraph: {
+    type: 'website',
+    siteName: 'Firefly',
+    url: SITE_URL,
+    title: 'Firefly — AI news, ranked by what matters',
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Firefly — AI news, ranked by what matters',
+    description: DESCRIPTION,
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
